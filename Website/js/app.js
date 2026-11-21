@@ -525,6 +525,10 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.remove("on"), 2600);
   }
+  $$("[data-repo]").forEach((a) => {
+    const cfg = window.AG_CONFIG || {};
+    if (cfg.repoUrl) a.href = cfg.repoUrl;
+  });
   $$("[data-download]").forEach((a) => {
     const cfg = window.AG_CONFIG || {};
     if (cfg.downloadUrl) {

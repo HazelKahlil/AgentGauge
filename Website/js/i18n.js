@@ -18,7 +18,7 @@ window.AG_I18N = {
     "hero.cta": "Download for macOS",
     "hero.film": "Watch the film",
     "hero.filmLen": "62s",
-    "hero.meta": "Native Swift + Metal · Runs locally on your Mac",
+    "hero.meta": "Native Swift + Metal · Open source · Runs locally on your Mac",
     "hero.hint": "Hover the Dock — or click the gauge in the menu bar",
 
     "mb.finder": "Finder",
@@ -135,7 +135,7 @@ window.AG_I18N = {
     "hero.cta": "下载 macOS 版",
     "hero.film": "观看宣传片",
     "hero.filmLen": "62 秒",
-    "hero.meta": "原生 Swift + Metal · 完全在本机运行",
+    "hero.meta": "原生 Swift + Metal · 开源可审计 · 完全在本机运行",
     "hero.hint": "悬停 Dock 图标，或点击菜单栏里的水位图标",
 
     "mb.finder": "访达",
