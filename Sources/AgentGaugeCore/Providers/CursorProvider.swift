@@ -3,6 +3,7 @@ import SQLite3
 
 public struct CursorLocalAuth: Sendable {
     public let accessToken: String?
+    public let refreshToken: String?
     public let email: String?
     public let membershipType: String?
     public let signUpType: String?
@@ -24,10 +25,38 @@ public struct CursorProvider: UsageProvider {
             if let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
                 return snapshot
             }
+            // Attempt native refreshToken exchange if accessToken expired while Cursor.app was closed
+            if let rt = localAuth.refreshToken,
+               let refreshed = await Self.refreshCursorAccessToken(refreshToken: rt),
+               let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: refreshed, isWorking: isWorking) {
+                return snapshot
+            }
             // Retry once after brief pause on transient network/SSL hiccup
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
             if let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
                 return snapshot
+            }
+            // Unified Anysphere/xAI offline cross-fallback when account is Grok-linked
+            if localAuth.signUpType?.lowercased() == "grok",
+               let sandCache = GrokBotProvider.readSandPersistenceUsage(matchingEmailFrom: localAuth) {
+                return QuotaSnapshot(
+                    agentID: .cursor,
+                    remainingPercent: sandCache.remainingPercent,
+                    accountEmail: localAuth.email ?? sandCache.email,
+                    planTier: Self.formatCursorPlan(rawPlan: localAuth.membershipType, isMergedGrok: true) ?? sandCache.planTier,
+                    primaryLabel: "Cursor",
+                    resetsAt: sandCache.resetsAt,
+                    windows: [
+                        QuotaWindow(
+                            label: "周期总额度 (xAI 互通缓存)",
+                            remainingPercent: sandCache.remainingPercent,
+                            resetsAt: sandCache.resetsAt,
+                            isPrimary: true
+                        )
+                    ],
+                    isWorking: isWorking,
+                    sourceDescription: "Cursor 本地账号"
+                )
             }
             // Local token exists -> transient network issue, NEVER set requiresWebLogin=true (preserves last valid quota!)
             return QuotaSnapshot(
@@ -203,7 +232,21 @@ public struct CursorProvider: UsageProvider {
         let isMerged = (planRoot?["isMerged"] as? Bool) ?? (auth.signUpType?.lowercased() == "grok")
         let resolvedPlan = Self.formatCursorPlan(rawPlan: apiPlanName ?? auth.membershipType, isMergedGrok: isMerged)
 
-        let subtitle = json["displayMessage"] as? String
+        var subtitleParts: [String] = []
+        if let msg = (json["displayMessage"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !msg.isEmpty {
+            subtitleParts.append(msg)
+        }
+        if let spend = json["spendLimitUsage"] as? [String: Any] {
+            let usedCents = Self.parseDouble(spend["individualUsed"]) ?? Self.parseDouble(spend["pooledUsed"])
+            let limitCents = Self.parseDouble(spend["individualLimit"]) ?? Self.parseDouble(spend["pooledLimit"])
+            if let u = usedCents, let l = limitCents, l > 0 {
+                subtitleParts.append(String(format: "按量支出 $%.2f / $%.0f", u / 100.0, l / 100.0))
+            }
+        }
+        if let bonus = Self.parseDouble(planUsage["remainingBonus"]), bonus > 0.5 {
+            subtitleParts.append(String(format: "赠送额度剩 %.0f", bonus))
+        }
+
         return QuotaSnapshot(
             agentID: .cursor,
             remainingPercent: remaining,
@@ -212,10 +255,28 @@ public struct CursorProvider: UsageProvider {
             primaryLabel: "Cursor",
             resetsAt: resetsAt,
             windows: windows,
-            subtitle: subtitle,
+            subtitle: subtitleParts.isEmpty ? nil : subtitleParts.joined(separator: " · "),
             isWorking: isWorking,
             sourceDescription: "Cursor 本地账号"
         )
+    }
+
+    private static func refreshCursorAccessToken(refreshToken: String) async -> String? {
+        guard let url = URL(string: "https://api2.cursor.sh/aiserver.v1.AuthService/RefreshToken") else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 5.5)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refreshToken": refreshToken])
+
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = (json["accessToken"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else {
+            return nil
+        }
+        return token
     }
 
     private static func postCursorRPC(endpoint: String, accessToken: String) async -> [String: Any]? {
@@ -277,21 +338,15 @@ public struct CursorProvider: UsageProvider {
     public static func readLocalAuthState() -> CursorLocalAuth {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let dbPath = "\(home)/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        let empty = CursorLocalAuth(accessToken: nil, refreshToken: nil, email: nil, membershipType: nil, signUpType: nil, authId: nil, displayName: nil)
         guard FileManager.default.fileExists(atPath: dbPath) else {
-            return CursorLocalAuth(accessToken: nil, email: nil, membershipType: nil, signUpType: nil, authId: nil, displayName: nil)
+            return empty
         }
 
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let db else {
-            return CursorLocalAuth(accessToken: nil, email: nil, membershipType: nil, signUpType: nil, authId: nil, displayName: nil)
-        }
-        sqlite3_busy_timeout(db, 1500)
-        defer { sqlite3_close(db) }
-
-        var stmt: OpaquePointer?
         let sql = """
         SELECT key, value FROM ItemTable WHERE key IN (
             'cursorAuth/accessToken',
+            'cursorAuth/refreshToken',
             'cursorAuth/cachedEmail',
             'cursorAuth/stripeMembershipType',
             'cursorAuth/cachedSignUpType',
@@ -299,17 +354,12 @@ public struct CursorProvider: UsageProvider {
             'cursorAuth/cachedScopedProfile'
         );
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
-            return CursorLocalAuth(accessToken: nil, email: nil, membershipType: nil, signUpType: nil, authId: nil, displayName: nil)
-        }
-        defer { sqlite3_finalize(stmt) }
 
-        var map: [String: String] = [:]
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let kPtr = sqlite3_column_text(stmt, 0),
-               let vPtr = sqlite3_column_text(stmt, 1) {
-                map[String(cString: kPtr)] = String(cString: vPtr).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
+        // Standard read-only open first; fallback to immutable URI if Cursor closed leaving an unindexed -wal file!
+        let map = querySQLiteKeyValues(dbPath: dbPath, sql: sql, immutable: false)
+            ?? querySQLiteKeyValues(dbPath: dbPath, sql: sql, immutable: true)
+        guard let map else {
+            return empty
         }
 
         var displayName: String? = nil
@@ -323,12 +373,48 @@ public struct CursorProvider: UsageProvider {
 
         return CursorLocalAuth(
             accessToken: map["cursorAuth/accessToken"]?.nilIfEmpty,
+            refreshToken: map["cursorAuth/refreshToken"]?.nilIfEmpty,
             email: map["cursorAuth/cachedEmail"]?.nilIfEmpty,
             membershipType: map["cursorAuth/stripeMembershipType"]?.nilIfEmpty,
             signUpType: map["cursorAuth/cachedSignUpType"]?.nilIfEmpty,
             authId: map["cursorAuth/stripeMembershipAuthId"]?.nilIfEmpty ?? profileAuthId,
             displayName: displayName?.nilIfEmpty
         )
+    }
+
+    static func querySQLiteKeyValues(dbPath: String, sql: String, immutable: Bool) -> [String: String]? {
+        var db: OpaquePointer?
+        let openRC: Int32
+        if immutable {
+            var allowed = CharacterSet.urlPathAllowed
+            allowed.remove(charactersIn: "?#")
+            guard let encoded = dbPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+            let uri = "file:\(encoded)?immutable=1"
+            openRC = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX, nil)
+        } else {
+            openRC = sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        }
+        guard openRC == SQLITE_OK, let db else {
+            if let db { sqlite3_close(db) }
+            return nil
+        }
+        sqlite3_busy_timeout(db, 1500)
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return nil
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        var map: [String: String] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let kPtr = sqlite3_column_text(stmt, 0),
+               let vPtr = sqlite3_column_text(stmt, 1) {
+                map[String(cString: kPtr)] = String(cString: vPtr).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return map
     }
 
     private static func checkIsWorking() -> Bool {

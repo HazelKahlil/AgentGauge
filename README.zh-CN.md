@@ -7,10 +7,10 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.1.0-141413?style=flat-square" alt="Release v1.1.0" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.2.0-141413?style=flat-square" alt="Release v1.2.0" /></a>
     <img src="https://img.shields.io/badge/系统-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/引擎-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
-    <img src="https://img.shields.io/badge/已支持-50%20款%20AI%20应用-478577?style=flat-square" alt="50 款 AI 应用" />
+    <img src="https://img.shields.io/badge/已支持-29%20家模型与套餐厂商-478577?style=flat-square" alt="29 家模型与套餐厂商" />
     <a href="./LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-77756f?style=flat-square" alt="MIT License" /></a>
   </p>
 
@@ -49,15 +49,24 @@
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/assets/liquid-styles.jpg" width="100%" alt="11 种几何样式与低水位自动避让" />
-      <p><strong>11 种几何样式 · 4 种色调 · 低水位避让</strong><br />每一枚徽标均严格贴合 macOS 图标圆角曲率裁切。余量低于 <code>30%</code> 时，同心 R 角徽标自动滑向顶部角落，绝不遮挡应用图标本体。</p>
+      <img src="docs/assets/liquid-styles.jpg" width="100%" alt="11 种精选光学水波样式与低水位避让" />
+      <p><strong>11 种精选样式 · 全系光学水波</strong><br />涵盖截图顶栏时间、动态极性反相字、光圈扇叶扫描、像素 LED 点阵、博朗圆弧指针与低水位避让——统一搭载招牌微泡折射液态着色器。</p>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="支持 50 款主流 AI 应用" />
-      <p><strong>50 款主流工具 · 一枚仪表统管</strong><br />覆盖编程智能体、主流 IDE、JetBrains 全家桶与桌面/本地大模型客户端，按 macOS Bundle ID 自动识别本机已登录状态。</p>
+      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="支持 29 家主流模型与套餐厂商" />
+      <p><strong>29 家真实计费厂商 · 拒绝假 100%</strong><br />严格聚焦拥有真实订阅配额、Coding Plan 积分或官方 API 余额池的自研模型与智能体，彻底剔除无配额本地壳。</p>
     </td>
   </tr>
 </table>
+
+---
+
+## v1.2.0 更新亮点
+
+- **11 款纯图标精选指示样式 + 统一光学水波**：全新定制「截图顶栏时间、动态反相字、微晶描边字、同心 R 角避让、光圈扇叶扫描、像素 LED 点阵、双轨微仪表、博朗圆弧指针、底部 5 格晶块、顶部灵动微岛、顶部弧形光眉」，全系共享招牌微泡折射水波与浅色图标低水位自适应增强。
+- **重力稳态 120Hz 水波物理与悬停水平导轨**：消除异步位移抖动，升级临界阻尼水面恢复与相邻图标中垂线零延迟交接，左右横滑时悬停卡片严格沿水平导轨丝滑平移、绝不上下跳动。
+- **29 家真实配额厂商提纯与 API 余额一等公民**：剔除无计费体系的本地浏览器与空壳客户端；新增 DeepSeek / Kimi 官方货币余额池（如 `¥28.50`）、GitHub Copilot、Windsurf 本地状态与 Antigravity `AI Ultra` 套餐等级自动识别。
+- **合盖休眠零功耗与自愈式底层防护**：新增系统睡眠/锁屏自动挂起、Dock 图块 Mach 通道 5 秒断路自愈及子进程确定性回收。
 
 ---
 
@@ -65,10 +74,10 @@
 
 ### 方式一：直接下载安装包（`.dmg`）
 
-- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-v1.1.0-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.1.0-macOS.dmg)（`3.0 MB`）
-- **GitHub Releases 下载**：[**AgentGauge-v1.1.0-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.1.0-macOS.dmg)
+- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-v1.2.0-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.2.0-macOS.dmg)（`2.7 MB`）
+- **GitHub Releases 下载**：[**AgentGauge-v1.2.0-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.2.0-macOS.dmg)
 
-1. 打开 `AgentGauge-v1.1.0-macOS.dmg`，将 **AgentGauge** 拖入 `/Applications`（应用程序）文件夹。
+1. 打开 `AgentGauge-v1.2.0-macOS.dmg`，将 **AgentGauge** 拖入 `/Applications`（应用程序）文件夹。
 2. 首次启动时按系统提示授予一次 **辅助功能（Accessibility）** 权限（仅用于判断鼠标当前悬停在哪个 Dock 图标上）。
 3. *(可选)* 若首次打开时遇到 macOS Gatekeeper 开发者验证提示，可在「系统设置 → 隐私与安全性」中点击**仍要打开**，或在终端执行：
    ```bash
@@ -92,13 +101,12 @@ cd AgentGauge
 
 ---
 
-## 已支持的 50 款应用
+## 已支持的 29 家模型与套餐厂商
 
-| 类别 | 支持列表 |
+| 类别 | 支持厂商与官方客户端 |
 | :--- | :--- |
-| **编程智能体与 IDE（18）** | Claude, ChatGPT / Codex, Cursor, Antigravity, Grok Bot, Muse, WorkBuddy, Multica, Hermes, Windsurf, Trae, Kiro, Zed, VS Code, Warp, Qoder, Devin, Xcode |
-| **JetBrains 与终端（5）** | IntelliJ IDEA, PyCharm, WebStorm, Android Studio, OpenCode |
-| **AI 桌面助手与本地运行时（27）** | Gemini, Grok, DeepSeek, Perplexity, 豆包 (Doubao), Kimi, 通义千问 (Qwen), Cherry Studio, LM Studio, ChatCut, Manus, Kaze, Tabbit, 夸克 (Quark), 智谱清言 (ChatGLM), Ollama, Raycast AI, Jan, Le Chat, Poe, Chatbox, LobeChat, AnythingLLM, NextChat, Open WebUI, GPT4All, ComfyUI |
+| **Coding Agent & AI IDE（17）** | ChatGPT / Codex, Antigravity, Claude, Cursor, Grok Bot, Windsurf, WorkBuddy, Trae, Kiro, VS Code (Copilot), Qoder, Zed, Warp, Devin, IntelliJ IDEA, PyCharm, WebStorm |
+| **自研大模型 · 官方套餐与 API（12）** | Gemini, Grok, DeepSeek, Kimi, 智谱 GLM, 通义千问 Qwen, 豆包 Doubao, MiniMax, Perplexity, Le Chat (Mistral), Manus, Poe |
 
 ---
 
@@ -121,7 +129,7 @@ AgentGauge 从底层设计上坚持 **100% 本地运行、源码完全可审计*
 AgentGauge/
 ├── Sources/
 │   ├── CNativeDockTile/      # macOS 原生 Dock 图块底层桥接
-│   ├── AgentGaugeCore/       # 16-bit 半精度 Metal 液态着色器、状态存储与 50 款应用 Provider
+│   ├── AgentGaugeCore/       # 16-bit 半精度 Metal 液态着色器、状态存储与 29 家厂商 Provider
 │   ├── AgentGaugeApp/        # 菜单栏全局看板 (MenuBarPopoverView)、悬停卡片与设置工作台
 │   ├── AgentGaugeCleanup/    # 崩溃安全的原生 Dock 图标自动还原守护进程
 │   └── AgentGaugeProbe/      # 命令行诊断与图块渲染校验工具

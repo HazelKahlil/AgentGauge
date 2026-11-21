@@ -7,27 +7,21 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const I18N = window.AG_I18N;
-  const ICON = (id) => `assets/icons/${id}.png`;
+  const ASSET_V = "1.2.0";
+  const ICON = (id) => `assets/icons/${id}.png?v=${ASSET_V}`;
 
-  /* ------------------------------------------------------------------ 50 supported apps */
+  /* ------------------------------------------------------------------ 29 authentic Coding-Plan & Foundation-Model vendors */
   const APPS = [
-    ["codex", "ChatGPT / Codex", "c", "#3E8C79"], ["antigravity", "Antigravity", "c", "#5479B2"], ["cursor", "Cursor", "c", "#7165AD"],
-    ["grokbot", "Grok Bot", "c", "#B37452"], ["muse", "Muse", "c", "#4E7CA8"], ["claude", "Claude", "c", "#AD6E54"],
-    ["workbuddy", "WorkBuddy", "c", "#498596"], ["multica", "Multica", "c", "#7A67A6"], ["hermes", "Hermes", "c", "#A3687E"],
-    ["windsurf", "Windsurf", "c", "#428E85"], ["trae", "Trae", "c", "#4C9468"], ["kiro", "Kiro", "c", "#7C62AD"],
-    ["zed", "Zed", "c", "#4A6FA5"], ["vscode", "VS Code", "c", "#4878A8"], ["warp", "Warp", "c", "#4A86A8"],
-    ["qoder", "Qoder", "c", "#6368A8"], ["devin", "Devin", "c", "#458C86"], ["xcode", "Xcode", "c", "#4F7BB0"],
-    ["intellij", "IntelliJ IDEA", "d", "#AD5F6E"], ["pycharm", "PyCharm", "d", "#4A9476"], ["webstorm", "WebStorm", "d", "#468996"],
-    ["androidstudio", "Android Studio", "d", "#529672"], ["opencode", "OpenCode", "d", "#AD824C"],
+    ["codex", "ChatGPT / Codex", "c", "#3E8C79"], ["antigravity", "Antigravity", "c", "#5479B2"], ["claude", "Claude", "c", "#AD6E54"],
+    ["cursor", "Cursor", "c", "#7165AD"], ["grokbot", "Grok Bot", "c", "#B37452"], ["windsurf", "Windsurf", "c", "#428E85"],
+    ["workbuddy", "WorkBuddy", "c", "#498596"], ["trae", "Trae", "c", "#4C9468"], ["kiro", "Kiro", "c", "#7C62AD"],
+    ["vscode", "VS Code (Copilot)", "c", "#4878A8"], ["qoder", "Qoder", "c", "#6368A8"], ["zed", "Zed", "c", "#4A6FA5"],
+    ["warp", "Warp", "c", "#4A86A8"], ["devin", "Devin", "c", "#458C86"], ["intellij", "IntelliJ IDEA", "c", "#AD5F6E"],
+    ["pycharm", "PyCharm", "c", "#4A9476"], ["webstorm", "WebStorm", "c", "#468996"],
     ["gemini", "Gemini", "a", "#597AB2"], ["grok", "Grok", "a", "#788494"], ["deepseek", "DeepSeek", "a", "#536DA8"],
-    ["perplexity", "Perplexity", "a", "#3E7C87"], ["doubao", ["Doubao", "豆包"], "a", "#547EB0"], ["kimi", "Kimi", "a", "#6B7685"],
-    ["qwen", ["Qwen", "通义千问"], "a", "#6A64A8"], ["cherrystudio", "Cherry Studio", "a", "#AD5E5E"], ["lmstudio", "LM Studio", "a", "#755FA6"],
-    ["chatcut", "ChatCut", "a", "#7A6BA8"], ["manus", "Manus", "a", "#6B7685"], ["kaze", "Kaze", "a", "#4E7FA6"],
-    ["tabbit", "Tabbit", "a", "#5C7FAE"], ["quark", ["Quark", "夸克"], "a", "#5470B0"], ["chatglm", ["ChatGLM", "智谱清言"], "a", "#4F6FB0"],
-    ["ollama", "Ollama", "a", "#6E7480"], ["raycast", "Raycast AI", "a", "#B0605E"], ["jan", "Jan", "a", "#B08A4C"],
-    ["lechat", "Le Chat", "a", "#B57A4E"], ["poe", "Poe", "a", "#7B66AD"], ["chatbox", "Chatbox", "a", "#B0905C"],
-    ["lobechat", "LobeChat", "a", "#B07A5A"], ["anythingllm", "AnythingLLM", "a", "#727985"], ["nextchat", "NextChat", "a", "#5272B0"],
-    ["openwebui", "Open WebUI", "a", "#6A6F78"], ["gpt4all", "GPT4All", "a", "#8E9A52"], ["comfyui", "ComfyUI", "a", "#9EA24E"],
+    ["kimi", "Kimi", "a", "#6B7685"], ["chatglm", ["GLM", "智谱 GLM"], "a", "#4F6FB0"], ["qwen", ["Qwen", "通义千问 Qwen"], "a", "#6A64A8"],
+    ["doubao", ["Doubao", "豆包"], "a", "#547EB0"], ["minimax", "MiniMax", "a", "#A8667A"], ["perplexity", "Perplexity", "a", "#3E7C87"],
+    ["lechat", "Le Chat (Mistral)", "a", "#B57A4E"], ["manus", "Manus", "a", "#6B7685"], ["poe", "Poe", "a", "#7B66AD"],
   ];
   const TINT = Object.fromEntries(APPS.map((a) => [a[0], a[3]]));
 
@@ -95,7 +89,7 @@
     workbuddy: { level: 52, name: "WorkBuddy", label: "3.2k" },
   };
   const LAB_APPS = ["grokbot", "cursor", "antigravity", "codex", "claude", "workbuddy"];
-  const POPOVER_ORDER = ["antigravity", "cursor", "workbuddy", "multica", "grokbot", "gemini", "muse", "codex"];
+  const POPOVER_ORDER = ["antigravity", "cursor", "workbuddy", "deepseek", "grokbot", "gemini", "claude", "codex"];
 
   const SNAPSHOTS = {
     antigravity: {
@@ -135,14 +129,15 @@
         [["Credits Remaining", "剩余积分额度"], 52, "10d 11h", true, ["3177 pts", "3177 积分"]],
       ],
     },
-    multica: {
-      short: "Multica", title: "Multica", level: 100, reset: ["Online", "运行中"], working: true,
-      badge: ["Local", "本地应用"],
-      sub: ["Multica Local Runtime", "Multica 本地状态"],
+    deepseek: {
+      short: "DeepSeek", title: "DeepSeek", level: 48, reset: ["Pay-as-you-go", "按量计费"],
+      sidebarVal: "¥29", heroVal: "¥28.50", credits: true,
+      badge: ["API Balance", "API 余额"],
+      sub: ["DeepSeek Balance API · Pay-as-you-go", "DeepSeek 官方 API · 按量计费"],
       windows: [
-        [["Local Runtime (Uncapped)", "本地运行状态（无独立配额）"], 100, ["Online", "在线"], true],
+        [["Available API Balance", "DeepSeek API 可用余额"], 48, ["Pay-as-you-go", "按量计费"], true, ["¥28.50", "¥28.50"]],
       ],
-      note: ["Local orchestrator — no percentage cap", "本地编排客户端（不设百分比限额）"],
+      note: ["Direct local API key balance · Zero fake 100%", "本地 API Key 直连查询 · 真实可用余额"],
     },
     grokbot: {
       short: "Grok Bot", title: "Grok Bot", level: 69, reset: "5d 4h",
@@ -160,14 +155,6 @@
       sub: ["hello@agentgauge.app · Google AI Ultra", "hello@agentgauge.app · Google AI Ultra"],
       windows: [
         [["Gemini Daily Quota", "Gemini App 每日额度"], 77, "6h 10m", true],
-      ],
-    },
-    muse: {
-      short: "Muse", title: "Muse", level: 91, reset: "9h 00m", defaultPaused: true,
-      badge: ["Free", "Free"],
-      sub: ["Meta AI · Local Session", "Meta AI · 本地会话"],
-      windows: [
-        [["Muse Session Quota", "Muse 会话额度"], 91, "9h 00m", true],
       ],
     },
     codex: {
@@ -259,9 +246,9 @@
     if (!s) return "";
     const hex = TINT[id] || "#587BA3";
     const hero = s.heroVal || `${s.level}%`;
-    const cdText = s.working
-      ? (lang === "zh" ? "正在工作中" : "Working")
-      : (typeof s.reset === "string" ? (lang === "zh" ? `${s.reset} 重置` : `resets in ${s.reset}`) : bi(s.reset));
+    const cdText = typeof s.reset === "string"
+      ? (lang === "zh" ? `${s.reset} 重置` : `resets in ${s.reset}`)
+      : bi(s.reset);
     const wins = s.windows || [];
     const multi = wins.length > 1;
     return `
@@ -1127,7 +1114,7 @@
     if (!grid.children.length) {
       grid.innerHTML = labels.map((_, i) => {
         const n = String(i).padStart(2, "0");
-        return `<figure class="style-cell reveal"><video src="assets/styles/style_${n}.mp4" muted loop playsinline preload="none" aria-hidden="true"></video><span class="n">${n}</span><span data-style-label="${i}"></span></figure>`;
+        return `<figure class="style-cell reveal"><video src="assets/styles/style_${n}.mp4?v=${ASSET_V}" muted loop playsinline preload="none" aria-hidden="true"></video><span class="n">${n}</span><span data-style-label="${i}"></span></figure>`;
       }).join("");
       $$("video", grid).forEach((v) => watchVisible(v, (vis) => { if (vis && !reduceMotion) { v.play().catch(() => {}); } else { v.pause(); } }));
       observeReveals(grid);
@@ -1144,9 +1131,9 @@
       grid.innerHTML = APPS.map((a) => `<li data-cat="${a[2]}"><img src="${ICON(a[0])}" alt="" loading="lazy" width="58" height="58" /><span data-app-name="${a[0]}"></span><i style="background:${a[3]}"></i></li>`).join("");
     }
     $$("[data-app-name]", grid).forEach((s) => { const a = APPS.find((x) => x[0] === s.dataset.appName); s.textContent = appName(a[1]); });
-    const counts = { all: APPS.length, c: 0, d: 0, a: 0 };
+    const counts = { all: APPS.length, c: 0, a: 0 };
     APPS.forEach((a) => counts[a[2]]++);
-    const fs = [["all", "apps.all"], ["c", "apps.coding"], ["d", "apps.dev"], ["a", "apps.ai"]];
+    const fs = [["all", "apps.all"], ["c", "apps.coding"], ["a", "apps.ai"]];
     $("#appFilters").innerHTML = fs.map(([k, key]) => `<button type="button" class="filter${k === appFilter ? " on" : ""}" data-f="${k}">${t(key)}<sup>${counts[k]}</sup></button>`).join("");
     $$("li", grid).forEach((li) => li.classList.toggle("dim", appFilter !== "all" && li.dataset.cat !== appFilter));
   }

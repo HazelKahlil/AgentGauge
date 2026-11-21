@@ -80,7 +80,7 @@ public struct GrokBotProvider: UsageProvider {
         )
     }
 
-    private struct SandCachedUsage {
+    struct SandCachedUsage: Sendable {
         let remainingPercent: Double
         let usedPercent: Double
         let resetsAt: Date?
@@ -88,7 +88,7 @@ public struct GrokBotProvider: UsageProvider {
         let email: String?
     }
 
-    private static func readSandPersistenceUsage(matchingEmailFrom cursorAuth: CursorLocalAuth) -> SandCachedUsage? {
+    static func readSandPersistenceUsage(matchingEmailFrom cursorAuth: CursorLocalAuth) -> SandCachedUsage? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let dirPath = "\(home)/Library/Application Support/Grok Bot/sand-client-persistence"
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dirPath) else {

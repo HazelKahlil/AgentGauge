@@ -402,7 +402,7 @@ struct SettingsWindowView: View {
                 Text("AgentGauge")
                     .font(.system(size: 14.5, weight: .semibold, design: .rounded))
 
-                Text("v1.1.0")
+                Text("v1.2.0")
                     .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5.5)
@@ -543,7 +543,7 @@ struct SettingsWindowView: View {
             HStack(spacing: 8) {
                 Text("图标余量")
                     .font(.system(size: 12))
-                    .help("开关 Dock 图标内部的数字/圆角显示，点击右侧胶囊可自由调节大小、灰/黑半圆、R角扇圆等 11 种样式")
+                    .help("开关 Dock 图标内部的余量展示，点击右侧胶囊可自由切换 11 种水波、光学仪表与微岛样式")
                 Spacer()
 
                 Button {
@@ -565,7 +565,7 @@ struct SettingsWindowView: View {
                 .controlSize(.small)
                 .appleNativeGlassButton()
                 .focusEffectDisabled()
-                .help("打开图标内余量自定义工作台：实时调节字号/圆块大小、灰色/暗黑半圆、左上/左下扇形圆、正上/下/左/右半圆等")
+                .help("打开图标余量自定义工作台：实时调节大小、衬底浓度、色调与 11 款精选展示样式")
 
                 Toggle("", isOn: $store.showDockBadge)
                     .toggleStyle(.switch)
@@ -1641,7 +1641,7 @@ private struct BadgeCustomizationSheet: View {
         self._draftOpacity = State(initialValue: store.badgeOpacity)
 
         var candidates: [AgentID] = []
-        for id in [AgentID.antigravity, .cursor, .workbuddy, .codex, .claude, .grokbot, .muse] {
+        for id in [AgentID.antigravity, .cursor, .workbuddy, .codex, .claude, .grokbot, .deepseek] {
             if id.installedAppURL != nil && !candidates.contains(id) {
                 candidates.append(id)
             }
@@ -1680,7 +1680,7 @@ private struct BadgeCustomizationSheet: View {
                 VStack(alignment: .leading, spacing: 1.5) {
                     Text("图标余量 · 样式与大小自定义")
                         .font(.system(size: 13.5, weight: .semibold))
-                    Text("支持四边半圆、左上/左下扇形圆、灰色/暗黑弧边及开关控制 · 实时同步 Dock")
+                    Text("精选 11 款水波液位、光学光圈、LED 点阵与灵动微岛样式 · 实时同步 Dock")
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                 }
@@ -1823,7 +1823,7 @@ private struct BadgeCustomizationSheet: View {
             // Size & Frosted Opacity Sliders (Local @State during drag -> 0ms main-thread overhead!)
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
-                    Text("字号与圆块大小")
+                    Text("字号与组件大小")
                         .font(.system(size: 11.5, weight: .medium))
                         .frame(width: 88, alignment: .leading)
                     Slider(value: $draftScale, in: 0.65...1.80) { editing in
@@ -1836,7 +1836,7 @@ private struct BadgeCustomizationSheet: View {
                 }
 
                 HStack(spacing: 8) {
-                    Text("半圆/底座浓度")
+                    Text("底座与衬底浓度")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(isPureTextStyle ? .tertiary : .primary)
                         .frame(width: 88, alignment: .leading)
@@ -1922,6 +1922,16 @@ private struct BadgeCustomizationSheet: View {
 
         return previewAgents.map { agentID in
             let appURL = agentID.installedAppURL ?? Bundle.main.bundleURL
+            let demoReset: String = switch agentID {
+            case .antigravity: "19h 0m"
+            case .cursor:      "5d 4h"
+            case .workbuddy:   "9d 3h"
+            default:           "19h 0m"
+            }
+            let demoWindows: [QuotaWindow] = [
+                QuotaWindow(label: "5h 限额", remainingPercent: level, resetText: demoReset, isPrimary: true),
+                QuotaWindow(label: "周限额", remainingPercent: min(96, max(24, level * 0.65 + 32)), resetText: "5d 4h", isPrimary: false)
+            ]
             let snap: QuotaSnapshot = {
                 if agentID == .workbuddy {
                     let credits = max(120, Int(round(level * 60.0)))
@@ -1930,12 +1940,16 @@ private struct BadgeCustomizationSheet: View {
                         remainingPercent: level,
                         creditsRemaining: credits,
                         creditsTotal: 6000,
+                        resetText: demoReset,
+                        windows: demoWindows,
                         sourceDescription: "preview"
                     )
                 }
                 return QuotaSnapshot(
                     agentID: agentID,
                     remainingPercent: level,
+                    resetText: demoReset,
+                    windows: demoWindows,
                     sourceDescription: "preview"
                 )
             }()
@@ -1944,8 +1958,8 @@ private struct BadgeCustomizationSheet: View {
                 waveTime: 1.55,
                 bubbleTime: 2.25,
                 hoverAlpha: 1.0,
-                tilt: 0.08,
-                ripple: 0.14,
+                tilt: 0.03,
+                ripple: 0.06,
                 animate: true,
                 showDockBadge: showBadge,
                 showPercentageSign: showPct,
@@ -1986,7 +2000,7 @@ private struct BadgeToneSelectorSection: View, Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("底座与圆弧边色调")
+            Text("底座与水体色调")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 3)
@@ -2072,7 +2086,7 @@ private struct BadgeStyleGridSection: View, Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("几何样式与出边位置（圆与半圆自动贴合苹果图标 R角裁切）")
+            Text("余量展示样式（水波液位 · 精密仪表 · 灵动微岛）")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 3)
@@ -2129,7 +2143,7 @@ private struct BadgeStyleGridSection: View, Equatable {
     }
 }
 
-// MARK: - Miniature Squircle Geometry Icon for All 11 DockBadgeStyles
+// MARK: - Miniature Squircle Geometry Icon for All 11 Curated DockBadgeStyles
 
 private struct BadgeStyleMiniDiagram: View {
     let style: DockBadgeStyle
@@ -2147,83 +2161,108 @@ private struct BadgeStyleMiniDiagram: View {
                 let w = geo.size.width
                 let h = geo.size.height
 
+                // Signature optical liquid water base across ALL 11 styles
+                Rectangle()
+                    .fill(fg.opacity(0.22))
+                    .frame(width: w, height: h * 0.44)
+                    .position(x: w * 0.50, y: h * 0.78)
+
                 switch style {
+                case .refTopTimerScrim:
+                    Rectangle()
+                        .fill(fg.opacity(0.65))
+                        .frame(width: w, height: h * 0.25)
+                        .position(x: w * 0.50, y: h * 0.125)
+                    Text("37")
+                        .font(.system(size: 6.2, weight: .black, design: .rounded))
+                        .foregroundStyle(fg)
+                        .position(x: w * 0.36, y: h * 0.76)
+
+                case .pureSplitText:
+                    Text("84")
+                        .font(.system(size: 7.4, weight: .black, design: .rounded))
+                        .foregroundStyle(fg)
+                        .underline()
+                        .position(x: w * 0.50, y: h * 0.55)
+
+                case .haloText:
+                    Text("84")
+                        .font(.system(size: 7.4, weight: .black, design: .rounded))
+                        .foregroundStyle(fg)
+                        .position(x: w * 0.50, y: h * 0.56)
+
                 case .concentricAutoDodge:
-                    RoundedRectangle(cornerRadius: 2.6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                         .fill(fg)
-                        .frame(width: w * 0.56, height: h * 0.36)
+                        .frame(width: w * 0.56, height: h * 0.34)
                         .position(x: w * 0.38, y: h * 0.72)
                     Image(systemName: "arrow.up")
                         .font(.system(size: 5.5, weight: .bold))
                         .foregroundStyle(fg.opacity(0.85))
                         .position(x: w * 0.38, y: h * 0.30)
 
-                case .concentricTopLeft:
-                    RoundedRectangle(cornerRadius: 2.6, style: .continuous)
-                        .fill(fg)
-                        .frame(width: w * 0.56, height: h * 0.36)
-                        .position(x: w * 0.38, y: h * 0.28)
-
-                case .concentricCircle:
-                    Circle()
-                        .fill(fg)
-                        .frame(width: w * 0.44, height: h * 0.44)
-                        .position(x: w * 0.34, y: h * 0.66)
-
-                case .cornerQuarterTopLeft:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.18, height: h * 1.18)
-                        .position(x: w * 0.05, y: h * 0.05)
-
-                case .cornerQuarterBottomLeft:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.18, height: h * 1.18)
-                        .position(x: w * 0.05, y: h * 0.95)
-
-                case .semiLeft:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.05, height: h * 1.05)
-                        .position(x: -w * 0.04, y: h * 0.50)
-
-                case .semiRight:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.05, height: h * 1.05)
-                        .position(x: w * 1.04, y: h * 0.50)
-
-                case .semiTop:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.16, height: h * 1.16)
-                        .position(x: w * 0.50, y: -h * 0.12)
-
-                case .semiBottom:
-                    Circle()
-                        .fill(fg.opacity(0.82))
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 0.8))
-                        .frame(width: w * 1.16, height: h * 1.16)
-                        .position(x: w * 0.50, y: h * 1.12)
-
-                case .haloText:
-                    Text("84")
-                        .font(.system(size: 7.5, weight: .black, design: .rounded))
+                case .apertureSweep:
+                    Image(systemName: "camera.aperture")
+                        .font(.system(size: 9.5, weight: .semibold))
                         .foregroundStyle(fg)
+                        .position(x: w * 0.50, y: h * 0.50)
+
+                case .retroLEDMatrix:
+                    RoundedRectangle(cornerRadius: 2.4, style: .continuous)
+                        .fill(fg.opacity(0.25))
+                        .overlay(
+                            HStack(spacing: 1.4) {
+                                ForEach(0..<4, id: \.self) { i in
+                                    Circle()
+                                        .fill(i < 3 ? fg : fg.opacity(0.35))
+                                        .frame(width: 2.1, height: 2.1)
+                                }
+                            }
+                        )
+                        .frame(width: w * 0.82, height: h * 0.38)
+                        .position(x: w * 0.50, y: h * 0.72)
+
+                case .dualTrackHUD:
+                    VStack(alignment: .leading, spacing: 1.8) {
+                        Capsule().fill(fg).frame(width: w * 0.54, height: 2.1)
+                        Capsule().fill(fg.opacity(0.65)).frame(width: w * 0.68, height: 2.1)
+                    }
+                    .position(x: w * 0.48, y: h * 0.72)
+
+                case .braunAnalogNeedle:
+                    Circle()
+                        .trim(from: 0.58, to: 0.92)
+                        .stroke(fg.opacity(0.65), style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                        .frame(width: w * 0.80, height: h * 0.80)
+                        .position(x: w * 0.50, y: h * 0.82)
+                    Capsule()
+                        .fill(Color.orange)
+                        .frame(width: 1.4, height: h * 0.42)
+                        .rotationEffect(.degrees(22))
+                        .position(x: w * 0.56, y: h * 0.62)
+
+                case .bottomPrismCells:
+                    HStack(spacing: 1.3) {
+                        ForEach(0..<4, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 0.9)
+                                .fill(i < 3 ? fg : fg.opacity(0.28))
+                                .frame(width: 2.6, height: 3.4)
+                        }
+                    }
+                    .position(x: w * 0.50, y: h * 0.76)
+
+                case .topDynamicIsland:
+                    Capsule()
+                        .fill(fg)
+                        .frame(width: w * 0.68, height: h * 0.30)
+                        .position(x: w * 0.50, y: h * 0.25)
+
+                case .topEnergyBrow:
+                    Circle()
+                        .trim(from: 0.60, to: 0.90)
+                        .stroke(fg, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                        .frame(width: w * 0.86, height: h * 0.86)
                         .position(x: w * 0.50, y: h * 0.56)
-
-                case .pureSplitText:
-                    Text("84")
-                        .font(.system(size: 7.5, weight: .black, design: .rounded))
-                        .foregroundStyle(fg)
-                        .underline()
-                        .position(x: w * 0.50, y: h * 0.54)
                 }
             }
             .clipShape(squircle)

@@ -33,6 +33,7 @@ struct DiagProbe {
               "rem=", ag.remainingPercent as Any,
               "tier=", ag.planTier ?? "nil", "badge=", ag.compactPlanBadge ?? "nil",
               "acct=", ag.accountEmail != nil ? "present" : "nil",
+              "err=", ag.errorMessage ?? "nil",
               "windows=", ag.windows.map { "\($0.label)=\(Int($0.remainingPercent))" })
 
         let t1 = Date()
@@ -64,6 +65,34 @@ struct DiagProbe {
               "rem=", cl.remainingPercent as Any,
               "tier=", cl.planTier ?? "nil", "badge=", cl.compactPlanBadge ?? "nil",
               "err=", cl.errorMessage ?? "nil")
+
+        let tGem = Date()
+        let gem = await GeminiProvider().fetchSnapshot()
+        print("2f. Gemini (\(String(format: "%.2fs", Date().timeIntervalSince(tGem)))):",
+              "rem=", gem.remainingPercent as Any,
+              "tier=", gem.planTier ?? "nil", "badge=", gem.compactPlanBadge ?? "nil")
+
+        let tCop = Date()
+        let cop = await CopilotProvider().fetchSnapshot()
+        print("2g. Copilot/VSCode (\(String(format: "%.2fs", Date().timeIntervalSince(tCop)))):",
+              "rem=", cop.remainingPercent as Any,
+              "tier=", cop.planTier ?? "nil", "badge=", cop.compactPlanBadge ?? "nil",
+              "sub=", cop.subtitle ?? "")
+
+        let tDs = Date()
+        let ds = await DeepSeekProvider().fetchSnapshot()
+        print("2h. DeepSeek (\(String(format: "%.2fs", Date().timeIntervalSince(tDs)))):",
+              "rem=", ds.remainingPercent as Any,
+              "bal=", ds.balanceDisplay ?? "nil",
+              "dockBal=", ds.dockBalanceShort ?? "nil",
+              "tier=", ds.planTier ?? "nil",
+              "badge=", ds.compactPlanBadge ?? "nil")
+
+        let tGk = Date()
+        let gk = await GrokDesktopProvider().fetchSnapshot()
+        print("2i. GrokDesktop (\(String(format: "%.2fs", Date().timeIntervalSince(tGk)))):",
+              "rem=", gk.remainingPercent as Any,
+              "tier=", gk.planTier ?? "nil", "badge=", gk.compactPlanBadge ?? "nil")
 
         let dockPID = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first?.processIdentifier ?? 0
         let locator = DockLocator()
@@ -173,22 +202,30 @@ struct DiagProbe {
                 }
             }
 
-            // Render a 4x3 visual verification sheet across the new custom styles, tones & badge-off mode!
+            // Render a 4x3 visual verification sheet across ALL 11 final curated styles + badge-off mode!
             await MainActor.run {
+                let codexURL = AgentID.codex.installedAppURL ?? url
+                let claudeURL = AgentID.claude.installedAppURL ?? url
                 let cursorURL = AgentID.cursor.installedAppURL ?? url
+                let dsURL = AgentID.deepseek.installedAppURL ?? url
+
                 let cases: [(String, AgentID, URL, Double, Bool, DockBadgeStyle, NumberColorMode, CGFloat)] = [
-                    ("1. 同心R角 150% (反转)", .antigravity, url, 64, true, .concentricAutoDodge, .smartInvert, 1.50),
-                    ("2. 左上扇圆 (烟灰)", .antigravity, url, 64, true, .cornerQuarterTopLeft, .smokeGray, 1.45),
-                    ("3. 左下扇圆 (烟灰)", .cursor, cursorURL, 78, true, .cornerQuarterBottomLeft, .smokeGray, 1.45),
-                    ("4. 正左半圆 (烟灰)", .antigravity, url, 52, true, .semiLeft, .smokeGray, 1.45),
-                    ("5. 正右半圆 (黑曜)", .antigravity, url, 52, true, .semiRight, .obsidianBlack, 1.45),
-                    ("6. 正上半圆 (烟灰)", .cursor, cursorURL, 68, true, .semiTop, .smokeGray, 1.45),
-                    ("7. 正下半圆 (黑曜)", .antigravity, url, 72, true, .semiBottom, .obsidianBlack, 1.45),
-                    ("8. 关闭数字 (纯水波)", .antigravity, url, 58, false, .concentricAutoDodge, .smartInvert, 1.50)
+                    ("1. 截图顶栏时间 (14%低水)", .codex, codexURL, 14, true, .refTopTimerScrim, .smartInvert, 1.50),
+                    ("2. 动态反相字", .antigravity, url, 64, true, .pureSplitText, .smartInvert, 1.50),
+                    ("3. 微晶描边字", .cursor, cursorURL, 57, true, .haloText, .smartInvert, 1.50),
+                    ("4. 同心R角(避让 22%)", .codex, codexURL, 22, true, .concentricAutoDodge, .smartInvert, 1.50),
+                    ("5. 光圈扇叶扫描", .codex, codexURL, 37, true, .apertureSweep, .smartInvert, 1.50),
+                    ("6. 像素LED点阵", .claude, claudeURL, 42, true, .retroLEDMatrix, .smartInvert, 1.50),
+                    ("7. 双轨微仪表", .cursor, cursorURL, 57, true, .dualTrackHUD, .smartInvert, 1.50),
+                    ("8. 博朗指针(浅色低水24%)", .antigravity, url, 24, true, .braunAnalogNeedle, .smartInvert, 1.50),
+                    ("9. 底部5格(浅色低水24%)", .codex, codexURL, 24, true, .bottomPrismCells, .smartInvert, 1.50),
+                    ("10. 顶部灵动微岛", .claude, claudeURL, 37, true, .topDynamicIsland, .smartInvert, 1.50),
+                    ("11. 顶部光眉(纯白图标)", .antigravity, url, 56, true, .topEnergyBrow, .smartInvert, 1.50),
+                    ("12. DeepSeek 余额(¥11)", .deepseek, dsURL, 43, true, .refTopTimerScrim, .smartInvert, 1.50)
                 ]
 
                 let cols = 4
-                let rows = 2
+                let rows = 3
                 let cellW = 280
                 let cellH = 304
                 let sheetW = cols * cellW
@@ -196,7 +233,7 @@ struct DiagProbe {
                 let cs = CGColorSpaceCreateDeviceRGB()
                 let bmi = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
                 if let ctx = CGContext(data: nil, width: sheetW, height: sheetH, bitsPerComponent: 8, bytesPerRow: sheetW * 4, space: cs, bitmapInfo: bmi) {
-                    ctx.setFillColor(red: 0.92, green: 0.94, blue: 0.97, alpha: 1.0)
+                    ctx.setFillColor(red: 0.08, green: 0.10, blue: 0.14, alpha: 1.0)
                     ctx.fill(CGRect(x: 0, y: 0, width: sheetW, height: sheetH))
 
                     for (idx, item) in cases.enumerated() {
@@ -205,16 +242,32 @@ struct DiagProbe {
                         let x = CGFloat(col * cellW)
                         let y = CGFloat((rows - 1 - row) * cellH)
 
+                        let demoWin = [
+                            QuotaWindow(label: "5h 限额", remainingPercent: item.3, resetText: "19h 0m", isPrimary: true),
+                            QuotaWindow(label: "周限额", remainingPercent: 78, resetText: "5d 4h")
+                        ]
+                        let snap = QuotaSnapshot(
+                            agentID: item.1,
+                            remainingPercent: item.3,
+                            creditsRemaining: item.1 == .workbuddy ? 3840 : nil,
+                            creditsTotal: item.1 == .workbuddy ? 6000 : nil,
+                            balanceDisplay: item.1 == .deepseek ? "¥11.28" : nil,
+                            dockBalanceShort: item.1 == .deepseek ? "¥11" : nil,
+                            resetText: item.1 == .deepseek ? "按量计费" : "19h 0m",
+                            windows: demoWin,
+                            sourceDescription: "sheet"
+                        )
+
                         if let cg = NativeIconRenderer.shared.renderTileImage(
                             agentID: item.1,
                             appURL: item.2,
-                            snapshot: QuotaSnapshot(agentID: item.1, remainingPercent: item.3, sourceDescription: "sheet"),
+                            snapshot: snap,
                             params: IconRenderParams(
                                 waveTime: 1.5,
                                 bubbleTime: 2.1,
                                 hoverAlpha: 1.0,
-                                tilt: 0.08,
-                                ripple: 0.12,
+                                tilt: 0.03,
+                                ripple: 0.05,
                                 animate: true,
                                 showDockBadge: item.4,
                                 showPercentageSign: true,
@@ -230,8 +283,8 @@ struct DiagProbe {
                         NSGraphicsContext.saveGraphicsState()
                         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
                         let attr: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
-                            .foregroundColor: NSColor(calibratedWhite: 0.15, alpha: 1.0)
+                            .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+                            .foregroundColor: NSColor(calibratedWhite: 0.90, alpha: 1.0)
                         ]
                         (item.0 as NSString).draw(at: NSPoint(x: x + 24, y: y + 12), withAttributes: attr)
                         NSGraphicsContext.restoreGraphicsState()

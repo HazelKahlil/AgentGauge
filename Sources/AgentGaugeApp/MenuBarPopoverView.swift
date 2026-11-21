@@ -304,6 +304,9 @@ struct MenuBarPopoverView: View {
     }
 
     private func heroReadoutString(for snap: QuotaSnapshot) -> String? {
+        if let bal = snap.balanceDisplay {
+            return bal
+        }
         if let c = snap.creditsRemaining {
             if let tot = snap.creditsTotal, tot > 0 {
                 return "\(c)/\(tot)"
@@ -340,7 +343,9 @@ struct MenuBarPopoverView: View {
         let barTone = semanticColor(for: win.remainingPercent, base: accent, textMode: false)
 
         let valueStr: String
-        if isFirst, snapshot.isCreditsBased, let c = snapshot.creditsRemaining {
+        if isFirst, let bal = snapshot.balanceDisplay {
+            valueStr = bal
+        } else if isFirst, snapshot.isCreditsBased, let c = snapshot.creditsRemaining {
             valueStr = "\(c) 积分"
         } else {
             let n = Int(round(win.remainingPercent))

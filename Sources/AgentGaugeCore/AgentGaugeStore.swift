@@ -19,12 +19,14 @@ public final class AgentGaugeStore: ObservableObject {
 
     @Published public var pinnedAgents: [AgentID] {
         didSet {
+            guard !promoFrozen else { return }
             UserDefaults.standard.set(pinnedAgents.map(\.rawValue), forKey: "AgentGauge.pinnedAgents.v2")
         }
     }
 
     @Published public var enabledAgents: Set<AgentID> {
         didSet {
+            guard !promoFrozen else { return }
             UserDefaults.standard.set(enabledAgents.map(\.rawValue), forKey: "AgentGauge.enabledAgents")
             pushSettingsToOverlay()
         }
@@ -169,6 +171,8 @@ public final class AgentGaugeStore: ObservableObject {
     private let providers: [any UsageProvider] = ProviderRegistry.allProviders()
     private var refreshTimer: Timer?
     private var permissionCheckTimer: Timer?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var isSystemSleeping: Bool = false
 
     private init() {
         let defaults = UserDefaults.standard
@@ -178,18 +182,27 @@ public final class AgentGaugeStore: ObservableObject {
             self.isMasterEnabled = true
         }
 
+        // Only auto-discover authentic AI Coding Agent / Foundation Model Token-Plan apps installed on this Mac
+        let autoDiscoverCandidates: [AgentID] = [
+            .antigravity, .cursor, .grokbot, .codex, .claude, .workbuddy,
+            .gemini, .grok, .deepseek, .windsurf, .trae, .kiro, .qoder,
+            .zed, .vscode, .warp, .kimi, .chatglm, .qwen, .doubao, .minimax, .perplexity
+        ]
+        let needsPureVendorSync = !defaults.bool(forKey: "AgentGauge.migratedPureVendors.v1")
+
         let resolvedPinned: [AgentID]
         if let savedPinned = defaults.stringArray(forKey: "AgentGauge.pinnedAgents.v2") {
+            // compactMap(AgentID.init) automatically purges removed non-vendor browsers/shells (kaze, multica, quark, muse, chatcut, etc.)!
             var parsed = savedPinned.compactMap(AgentID.init(rawValue:))
             if parsed.isEmpty { parsed = AgentID.defaultCoreSet }
-            if !defaults.bool(forKey: "AgentGauge.migratedGrokMuse.v1") {
-                for extra in [AgentID.grokbot, AgentID.muse] where extra.isInstalledOnMac && !parsed.contains(extra) {
+            if needsPureVendorSync {
+                for extra in autoDiscoverCandidates where extra.isInstalledOnMac && !parsed.contains(extra) {
                     parsed.append(extra)
                 }
             }
             resolvedPinned = parsed
         } else {
-            var initial = AgentID.defaultCoreSet.filter { $0.isInstalledOnMac }
+            var initial = autoDiscoverCandidates.filter { $0.isInstalledOnMac }
             if initial.isEmpty {
                 initial = AgentID.defaultCoreSet
             }
@@ -199,15 +212,17 @@ public final class AgentGaugeStore: ObservableObject {
 
         if let savedRaw = defaults.stringArray(forKey: "AgentGauge.enabledAgents") {
             var set = Set(savedRaw.compactMap(AgentID.init(rawValue:)))
-            if !defaults.bool(forKey: "AgentGauge.migratedGrokMuse.v1") {
-                for extra in [AgentID.grokbot, AgentID.muse] where extra.isInstalledOnMac {
+            if needsPureVendorSync {
+                for extra in autoDiscoverCandidates where extra.isInstalledOnMac {
                     set.insert(extra)
                 }
-                defaults.set(true, forKey: "AgentGauge.migratedGrokMuse.v1")
+                defaults.set(true, forKey: "AgentGauge.migratedPureVendors.v1")
+                defaults.set(resolvedPinned.map(\.rawValue), forKey: "AgentGauge.pinnedAgents.v2")
+                defaults.set(Array(set).map(\.rawValue), forKey: "AgentGauge.enabledAgents")
             }
             self.enabledAgents = set
         } else {
-            defaults.set(true, forKey: "AgentGauge.migratedGrokMuse.v1")
+            defaults.set(true, forKey: "AgentGauge.migratedPureVendors.v1")
             self.enabledAgents = Set(resolvedPinned)
         }
 
@@ -263,7 +278,7 @@ public final class AgentGaugeStore: ObservableObject {
            let style = DockBadgeStyle(rawValue: styleRaw) {
             self.badgeStyle = style
         } else {
-            self.badgeStyle = .concentricAutoDodge
+            self.badgeStyle = .refTopTimerScrim
         }
 
         if defaults.object(forKey: "AgentGauge.badgeScale") != nil {
@@ -307,14 +322,15 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.1.0 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        AppLogger.shared.log("System", "AgentGauge v1.2.0 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
         pushSettingsToOverlay()
         overlayManager.start()
+        registerSleepWakeObservers()
 
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.overlayManager.isActivelyHovering else { return }
+                guard let self, !self.isSystemSleeping, !self.overlayManager.isActivelyHovering else { return }
                 await self.refreshAll()
             }
         }
@@ -322,7 +338,7 @@ public final class AgentGaugeStore: ObservableObject {
         permissionCheckTimer?.invalidate()
         permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, !self.isSystemSleeping else { return }
                 let trusted = self.overlayManager.isAccessibilityTrusted
                 if trusted != self.accessibilityTrusted {
                     self.accessibilityTrusted = trusted
@@ -336,7 +352,54 @@ public final class AgentGaugeStore: ObservableObject {
         }
     }
 
+    private func registerSleepWakeObservers() {
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        for obs in workspaceObservers {
+            wsCenter.removeObserver(obs)
+        }
+        workspaceObservers.removeAll()
+
+        let sleepNames: [Notification.Name] = [
+            NSWorkspace.screensDidSleepNotification,
+            NSWorkspace.willSleepNotification,
+            NSWorkspace.sessionDidResignActiveNotification
+        ]
+        for name in sleepNames {
+            let token = wsCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.isSystemSleeping = true
+                    self?.overlayManager.hideAll()
+                }
+            }
+            workspaceObservers.append(token)
+        }
+
+        let wakeNames: [Notification.Name] = [
+            NSWorkspace.screensDidWakeNotification,
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification
+        ]
+        for name in wakeNames {
+            let token = wsCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let wasSleeping = self.isSystemSleeping
+                    self.isSystemSleeping = false
+                    if wasSleeping {
+                        await self.refreshAll()
+                    }
+                }
+            }
+            workspaceObservers.append(token)
+        }
+    }
+
     public func shutdown() {
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        for obs in workspaceObservers {
+            wsCenter.removeObserver(obs)
+        }
+        workspaceObservers.removeAll()
         refreshTimer?.invalidate()
         refreshTimer = nil
         permissionCheckTimer?.invalidate()
@@ -427,6 +490,8 @@ public final class AgentGaugeStore: ObservableObject {
 
     public func enablePromoDemoMode() {
         promoFrozen = true
+        pinnedAgents = [.antigravity, .cursor, .workbuddy, .deepseek, .grokbot, .gemini, .claude, .codex]
+        enabledAgents = [.antigravity, .cursor, .workbuddy, .deepseek, .grokbot, .claude, .codex]
         snapshots = PromoDemoData.snapshots()
         overlayManager.updateSnapshots(snapshots)
     }
@@ -461,28 +526,26 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     private static let nativeLocalAgents: Set<AgentID> = [
-        .codex, .antigravity, .cursor, .grokbot, .claude, .muse, .gemini,
-        .multica, .hermes, .xcode, .opencode, .cherrystudio, .lmstudio
+        .codex, .antigravity, .cursor, .grokbot, .claude, .gemini,
+        .vscode, .windsurf, .deepseek, .kimi, .grok
     ]
 
     private func refreshProvider(_ provider: any UsageProvider, forceWebProbe: Bool) async {
         guard !promoFrozen else { return }
         let id = provider.agentID
 
-        if !Self.nativeLocalAgents.contains(id) && !forceWebProbe && !webAuthVerified.contains(id) {
-            var hasSavedCookies = false
-            if !id.cookieDomainSuffixes.isEmpty {
-                hasSavedCookies = await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: id.cookieDomainSuffixes)
-            }
+        // Only skip WorkBuddy WebView probing when neither verified nor cookies exist unless forceWebProbe is true.
+        if id == .workbuddy && !forceWebProbe && !webAuthVerified.contains(id) {
+            let hasSavedCookies = await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: id.cookieDomainSuffixes)
             if !hasSavedCookies {
                 let idleSnap = QuotaSnapshot(
                     agentID: id,
                     remainingPercent: nil,
                     sourceDescription: "\(id.shortName) 未连接",
-                    requiresWebLogin: id.webLoginURL != nil,
+                    requiresWebLogin: true,
                     errorMessage: nil
                 )
-                if snapshots[id] != idleSnap {
+                if snapshots[id]?.hasMeaningfulChange(from: idleSnap) != false {
                     snapshots[id] = idleSnap
                     overlayManager.updateSnapshots(snapshots)
                 }
@@ -502,17 +565,23 @@ public final class AgentGaugeStore: ObservableObject {
             webAuthVerified.insert(id)
         }
 
+        let previous = snapshots[id]
+
         if fresh.remainingPercent != nil {
             snapshots[id] = fresh
-            let valDesc = fresh.formattedTooltipValue(showPercentageSign: showPercentageSign)
-            let tierTag = fresh.compactPlanBadge.map { " [\($0)]" } ?? ""
-            AppLogger.shared.log(id.displayName, "\(valDesc)\(tierTag) · 重置: \(fresh.formattedCountdown()) · 来源: \(fresh.sourceDescription)")
-        } else if let prev = snapshots[id], prev.remainingPercent != nil, !fresh.requiresWebLogin {
-            snapshots[id] = QuotaSnapshot(
+            if fresh.hasMeaningfulChange(from: previous) {
+                let valDesc = fresh.formattedTooltipValue(showPercentageSign: showPercentageSign)
+                let tierTag = fresh.compactPlanBadge.map { " [\($0)]" } ?? ""
+                AppLogger.shared.log(id.displayName, "\(valDesc)\(tierTag) · 重置: \(fresh.formattedCountdown()) · 来源: \(fresh.sourceDescription)")
+            }
+        } else if let prev = previous, prev.remainingPercent != nil, !fresh.requiresWebLogin {
+            let preserved = QuotaSnapshot(
                 agentID: id,
                 remainingPercent: prev.remainingPercent,
                 creditsRemaining: prev.creditsRemaining,
                 creditsTotal: prev.creditsTotal,
+                balanceDisplay: prev.balanceDisplay,
+                dockBalanceShort: prev.dockBalanceShort,
                 accountEmail: fresh.accountEmail ?? prev.accountEmail,
                 planTier: fresh.planTier ?? prev.planTier,
                 primaryLabel: prev.primaryLabel,
@@ -526,12 +595,13 @@ public final class AgentGaugeStore: ObservableObject {
                 requiresWebLogin: false,
                 errorMessage: fresh.errorMessage
             )
-            if let err = fresh.errorMessage {
+            snapshots[id] = preserved
+            if let err = fresh.errorMessage, err != prev.errorMessage {
                 AppLogger.shared.log(id.displayName, err)
             }
         } else {
             snapshots[id] = fresh
-            if let err = fresh.errorMessage {
+            if let err = fresh.errorMessage, fresh.hasMeaningfulChange(from: previous) {
                 AppLogger.shared.log(id.displayName, err)
             }
         }
@@ -552,7 +622,7 @@ public final class AgentGaugeStore: ObservableObject {
     public func resetBadgeCustomization() {
         showDockBadge = true
         showPercentageSign = true
-        badgeStyle = .concentricAutoDodge
+        badgeStyle = .refTopTimerScrim
         numberColorMode = .smartInvert
         badgeScale = 1.50
         badgeOpacity = 0.85

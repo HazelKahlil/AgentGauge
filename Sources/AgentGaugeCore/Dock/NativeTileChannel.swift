@@ -18,10 +18,12 @@ public final class NativeTileChannel {
     }
 
     private var activeTiles: [AgentID: ActiveTile] = [:]
+    private var nonRunningCheckedAt: [AgentID: TimeInterval] = [:]
     private var cleanupProcess: Process?
     private var cleanupPipe: Pipe?
     private var consecutiveFailures: Int = 0
-    public private(set) var isCircuitBroken: Bool = false
+    private var circuitCooldownUntil: Date = .distantPast
+    public var isCircuitBroken: Bool { Date() < circuitCooldownUntil }
 
     public init() {}
 
@@ -54,15 +56,25 @@ public final class NativeTileChannel {
         snapshot: QuotaSnapshot,
         params: IconRenderParams
     ) -> Bool {
-        guard !isCircuitBroken else { return false }
+        let nowTs = Date().timeIntervalSinceReferenceDate
+        guard Date() >= circuitCooldownUntil else { return false }
+
+        // Avoid 30Hz LaunchServices queries when hovering a closed Dock icon that still has valid cloud quota
+        if activeTiles[agentID] == nil,
+           let lastMiss = nonRunningCheckedAt[agentID],
+           (nowTs - lastMiss) < 1.2 {
+            return false
+        }
 
         guard let runningApp = agentID.bundleIdentifiers.lazy
                 .compactMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0).first })
                 .first,
               let appURL = runningApp.bundleURL else {
+            nonRunningCheckedAt[agentID] = nowTs
             release(agentID: agentID)
             return false
         }
+        nonRunningCheckedAt.removeValue(forKey: agentID)
 
         let pid = runningApp.processIdentifier
         var psn: NativeDockPSN
@@ -104,8 +116,10 @@ public final class NativeTileChannel {
             consecutiveFailures += 1
             AppLogger.shared.log("NativeTile", "\(agentID.displayName) 原生磁贴投递失败 (kr=\(sendResult))")
             if consecutiveFailures >= 5 {
-                isCircuitBroken = true
-                AppLogger.shared.log("NativeTile", "连续失败 5 次，已熔断原生磁贴通道")
+                consecutiveFailures = 0
+                circuitCooldownUntil = Date().addingTimeInterval(5.0)
+                activeTiles.removeAll()
+                AppLogger.shared.log("NativeTile", "Dock 通信波动，暂停磁贴投递 5 秒后自动自愈重连")
             }
             return false
         }

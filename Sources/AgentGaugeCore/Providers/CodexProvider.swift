@@ -1,5 +1,34 @@
+import AppKit
 import Foundation
 import SQLite3
+
+private final class CodexSnapshotCache: @unchecked Sendable {
+    static let shared = CodexSnapshotCache()
+    private let lock = NSLock()
+    private var cached: QuotaSnapshot?
+    private var cachedAt: Date = .distantPast
+
+    func get(isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let snap = cached else { return nil }
+        if let reset = snap.resetsAt, Date() >= reset {
+            return nil
+        }
+        let maxAge: TimeInterval = (isAppRunning || isWorking) ? 85.0 : 300.0
+        guard Date().timeIntervalSince(cachedAt) <= maxAge else {
+            return nil
+        }
+        return snap
+    }
+
+    func set(_ snap: QuotaSnapshot) {
+        lock.lock()
+        cached = snap
+        cachedAt = Date()
+        lock.unlock()
+    }
+}
 
 public struct CodexProvider: UsageProvider {
     public let agentID: AgentID = .codex
@@ -8,6 +37,30 @@ public struct CodexProvider: UsageProvider {
 
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
+        let isAppRunning = await MainActor.run {
+            AgentID.codex.bundleIdentifiers.contains { bid in
+                !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
+            }
+        }
+        if let recent = CodexSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking) {
+            return QuotaSnapshot(
+                agentID: .codex,
+                remainingPercent: recent.remainingPercent,
+                creditsRemaining: recent.creditsRemaining,
+                creditsTotal: recent.creditsTotal,
+                accountEmail: recent.accountEmail,
+                planTier: recent.planTier,
+                primaryLabel: recent.primaryLabel,
+                resetsAt: recent.resetsAt,
+                resetText: recent.resetText,
+                windows: recent.windows,
+                subtitle: recent.subtitle,
+                isWorking: isWorking,
+                sourceDescription: recent.sourceDescription,
+                updatedAt: recent.updatedAt
+            )
+        }
+
         let localAuth = Self.readLocalAuthIdentity()
 
         guard let codexPath = Self.findCodexBinary() else {
@@ -87,7 +140,7 @@ public struct CodexProvider: UsageProvider {
                 subtitleParts.append("满额重置券 ×\(avail)")
             }
 
-            return QuotaSnapshot(
+            let snap = QuotaSnapshot(
                 agentID: .codex,
                 remainingPercent: primaryRemaining,
                 accountEmail: resolvedEmail,
@@ -99,6 +152,10 @@ public struct CodexProvider: UsageProvider {
                 isWorking: isWorking,
                 sourceDescription: "Codex 本地账号"
             )
+            if primaryRemaining != nil {
+                CodexSnapshotCache.shared.set(snap)
+            }
+            return snap
         } catch {
             return QuotaSnapshot(
                 agentID: .codex,
@@ -181,10 +238,13 @@ public struct CodexProvider: UsageProvider {
     private static func findCodexBinary() -> String? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [
+            "\(home)/.local/bin/codex",
             "\(home)/.npm-global/bin/codex",
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
-            "/Applications/ChatGPT.app/Contents/Resources/codex"
+            "/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/app/bin/codex"
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
@@ -224,7 +284,7 @@ public struct CodexProvider: UsageProvider {
                 }
 
                 let requests: [[String: Any]] = [
-                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.1.0"]]],
+                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.2.0"]]],
                     ["jsonrpc": "2.0", "method": "initialized", "params": [:]],
                     ["jsonrpc": "2.0", "id": 2, "method": "account/read", "params": [:]],
                     ["jsonrpc": "2.0", "id": 3, "method": "account/rateLimits/read", "params": [:]]
@@ -268,9 +328,8 @@ public struct CodexProvider: UsageProvider {
                 }
 
                 try? stdinPipe.fileHandleForWriting.close()
-                if process.isRunning {
-                    process.terminate()
-                }
+                SubprocessReaper.terminateAndReap(process)
+                try? stdoutPipe.fileHandleForReading.close()
 
                 if rateResult != nil {
                     continuation.resume(returning: RPCBundle(account: acctResult, rateLimits: rateResult))

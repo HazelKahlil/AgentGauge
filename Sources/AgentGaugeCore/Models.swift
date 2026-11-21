@@ -2,82 +2,54 @@ import AppKit
 import Foundation
 
 public enum AgentCategory: String, CaseIterable, Sendable {
-    case codingAgent = "Coding Agent & IDE"
-    case devTools = "JetBrains & 终端"
-    case aiAssistant = "AI 桌面客户端"
+    case codingAgent = "Coding Agent & AI IDE"
+    case modelVendor = "自研大模型 · 官方套餐与 API"
 }
 
 public enum AgentID: String, CaseIterable, Codable, Sendable, Identifiable {
-    // Core Coding Agents & AI IDEs (18)
+    // I · Official Coding Agents & AI IDEs with Subscription / Token Plans / Credits (17)
     case codex
     case antigravity
+    case claude
     case cursor
     case grokbot
-    case muse
-    case claude
-    case workbuddy
-    case multica
-    case hermes
     case windsurf
+    case workbuddy
     case trae
     case kiro
-    case zed
     case vscode
-    case warp
     case qoder
+    case zed
+    case warp
     case devin
-    case xcode
-
-    // JetBrains & Developer Tools (5)
     case intellij
     case pycharm
     case webstorm
-    case androidstudio
-    case opencode
 
-    // Mainstream Desktop AI Assistants (9)
+    // II · First-Party Foundation Model Vendors & Official Token/Compute Plans (12)
     case gemini
     case grok
     case deepseek
-    case perplexity
-    case doubao
     case kimi
-    case qwen
-    case cherrystudio
-    case lmstudio
-
-    // Local LLM, AI Agents & AI Browsers (18)
-    case chatcut
-    case manus
-    case kaze
-    case tabbit
-    case quark
     case chatglm
-    case ollama
-    case raycast
-    case jan
+    case qwen
+    case doubao
+    case minimax
+    case perplexity
     case lechat
+    case manus
     case poe
-    case chatbox
-    case lobechat
-    case anythingllm
-    case nextchat
-    case openwebui
-    case gpt4all
-    case comfyui
 
     public var id: String { rawValue }
 
     public var category: AgentCategory {
         switch self {
-        case .codex, .antigravity, .cursor, .grokbot, .muse, .claude, .workbuddy,
-             .multica, .hermes, .windsurf, .trae, .kiro, .zed, .vscode, .warp, .qoder, .devin, .xcode:
+        case .codex, .antigravity, .claude, .cursor, .grokbot, .windsurf, .workbuddy,
+             .trae, .kiro, .vscode, .qoder, .zed, .warp, .devin, .intellij, .pycharm, .webstorm:
             return .codingAgent
-        case .intellij, .pycharm, .webstorm, .androidstudio, .opencode:
-            return .devTools
-        case .gemini, .grok, .deepseek, .perplexity, .doubao, .kimi, .qwen, .cherrystudio, .lmstudio,
-             .chatcut, .manus, .kaze, .tabbit, .quark, .chatglm, .ollama, .raycast, .jan, .lechat, .poe, .chatbox, .lobechat, .anythingllm, .nextchat, .openwebui, .gpt4all, .comfyui:
-            return .aiAssistant
+        case .gemini, .grok, .deepseek, .kimi, .chatglm, .qwen, .doubao, .minimax,
+             .perplexity, .lechat, .manus, .poe:
+            return .modelVendor
         }
     }
 
@@ -85,54 +57,33 @@ public enum AgentID: String, CaseIterable, Codable, Sendable, Identifiable {
         switch self {
         case .codex: return "ChatGPT / Codex"
         case .antigravity: return "Antigravity"
+        case .claude: return "Claude"
         case .cursor: return "Cursor"
         case .grokbot: return "Grok Bot"
-        case .muse: return "Muse"
-        case .claude: return "Claude"
-        case .workbuddy: return "WorkBuddy"
-        case .multica: return "Multica"
-        case .hermes: return "Hermes"
         case .windsurf: return "Windsurf"
+        case .workbuddy: return "WorkBuddy"
         case .trae: return "Trae"
         case .kiro: return "Kiro"
-        case .zed: return "Zed"
         case .vscode: return "VS Code (Copilot)"
-        case .warp: return "Warp"
         case .qoder: return "Qoder"
-        case .devin: return "Devin Desktop"
-        case .xcode: return "Xcode"
+        case .zed: return "Zed"
+        case .warp: return "Warp"
+        case .devin: return "Devin"
         case .intellij: return "IntelliJ IDEA"
         case .pycharm: return "PyCharm"
         case .webstorm: return "WebStorm"
-        case .androidstudio: return "Android Studio"
-        case .opencode: return "OpenCode / 终端"
         case .gemini: return "Gemini"
         case .grok: return "Grok"
         case .deepseek: return "DeepSeek"
-        case .perplexity: return "Perplexity"
-        case .doubao: return "豆包 Doubao"
         case .kimi: return "Kimi"
+        case .chatglm: return "智谱 GLM"
         case .qwen: return "通义千问 Qwen"
-        case .cherrystudio: return "Cherry Studio"
-        case .lmstudio: return "LM Studio"
-        case .chatcut: return "ChatCut"
-        case .manus: return "Manus"
-        case .kaze: return "Kaze 浏览器"
-        case .tabbit: return "Tabbit"
-        case .quark: return "夸克 Quark"
-        case .chatglm: return "智谱清言"
-        case .ollama: return "Ollama"
-        case .raycast: return "Raycast AI"
-        case .jan: return "Jan"
+        case .doubao: return "豆包 Doubao"
+        case .minimax: return "MiniMax"
+        case .perplexity: return "Perplexity"
         case .lechat: return "Le Chat (Mistral)"
+        case .manus: return "Manus"
         case .poe: return "Poe"
-        case .chatbox: return "Chatbox"
-        case .lobechat: return "LobeChat"
-        case .anythingllm: return "AnythingLLM"
-        case .nextchat: return "NextChat"
-        case .openwebui: return "Open WebUI"
-        case .gpt4all: return "GPT4All"
-        case .comfyui: return "ComfyUI Desktop"
         }
     }
 
@@ -140,110 +91,68 @@ public enum AgentID: String, CaseIterable, Codable, Sendable, Identifiable {
         switch self {
         case .codex: return "Codex"
         case .antigravity: return "Antigravity"
+        case .claude: return "Claude"
         case .cursor: return "Cursor"
         case .grokbot: return "Grok Bot"
-        case .muse: return "Muse"
-        case .claude: return "Claude"
-        case .workbuddy: return "WorkBuddy"
-        case .multica: return "Multica"
-        case .hermes: return "Hermes"
         case .windsurf: return "Windsurf"
+        case .workbuddy: return "WorkBuddy"
         case .trae: return "Trae"
         case .kiro: return "Kiro"
-        case .zed: return "Zed"
-        case .vscode: return "VS Code"
-        case .warp: return "Warp"
+        case .vscode: return "Copilot"
         case .qoder: return "Qoder"
+        case .zed: return "Zed"
+        case .warp: return "Warp"
         case .devin: return "Devin"
-        case .xcode: return "Xcode"
         case .intellij: return "IDEA"
         case .pycharm: return "PyCharm"
         case .webstorm: return "WebStorm"
-        case .androidstudio: return "Android Studio"
-        case .opencode: return "OpenCode"
         case .gemini: return "Gemini"
         case .grok: return "Grok"
         case .deepseek: return "DeepSeek"
-        case .perplexity: return "Perplexity"
-        case .doubao: return "豆包"
         case .kimi: return "Kimi"
-        case .qwen: return "Qwen"
-        case .cherrystudio: return "Cherry"
-        case .lmstudio: return "LM Studio"
-        case .chatcut: return "ChatCut"
-        case .manus: return "Manus"
-        case .kaze: return "Kaze"
-        case .tabbit: return "Tabbit"
-        case .quark: return "夸克"
-        case .chatglm: return "智谱清言"
-        case .ollama: return "Ollama"
-        case .raycast: return "Raycast"
-        case .jan: return "Jan"
+        case .chatglm: return "智谱 GLM"
+        case .qwen: return "千问 Qwen"
+        case .doubao: return "豆包"
+        case .minimax: return "MiniMax"
+        case .perplexity: return "Perplexity"
         case .lechat: return "Le Chat"
+        case .manus: return "Manus"
         case .poe: return "Poe"
-        case .chatbox: return "Chatbox"
-        case .lobechat: return "LobeChat"
-        case .anythingllm: return "AnythingLLM"
-        case .nextchat: return "NextChat"
-        case .openwebui: return "Open WebUI"
-        case .gpt4all: return "GPT4All"
-        case .comfyui: return "ComfyUI"
         }
     }
 
-    /// Primary + alternate macOS Bundle Identifiers supported for this agent.
+    /// Primary + alternate macOS Bundle Identifiers supported for this vendor's official app.
     public var bundleIdentifiers: [String] {
         switch self {
         case .codex: return ["com.openai.codex", "com.openai.chat"]
         case .antigravity: return ["com.google.antigravity"]
+        case .claude: return ["com.anthropic.claudefordesktop"]
         case .cursor: return ["com.todesktop.230313mzl4w4u92"]
         case .grokbot: return ["com.anysphere.sand"]
-        case .muse: return ["com.meta.endo"]
-        case .claude: return ["com.anthropic.claudefordesktop"]
-        case .workbuddy: return ["com.tencent.workbuddy.mac", "com.tencent.codebuddy"]
-        case .multica: return ["ai.multica.desktop"]
-        case .hermes: return ["com.nousresearch.hermes.setup"]
         case .windsurf: return ["com.exafunction.windsurf"]
+        case .workbuddy: return ["com.tencent.workbuddy.mac", "com.tencent.codebuddy"]
         case .trae: return ["com.trae.app", "com.bytedance.trae", "com.trae.cn"]
         case .kiro: return ["dev.kiro.desktop"]
-        case .zed: return ["dev.zed.Zed", "dev.zed.Zed-Preview"]
         case .vscode: return ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"]
-        case .warp: return ["dev.warp.Warp-Stable", "dev.warp.Warp"]
         case .qoder: return ["com.qoder.ide", "com.alibaba.qoder"]
+        case .zed: return ["dev.zed.Zed", "dev.zed.Zed-Preview"]
+        case .warp: return ["dev.warp.Warp-Stable", "dev.warp.Warp"]
         case .devin: return ["ai.cognition.devin", "com.cognition.devin"]
-        case .xcode: return ["com.apple.dt.Xcode"]
         case .intellij: return ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"]
         case .pycharm: return ["com.jetbrains.pycharm", "com.jetbrains.pycharm.ce"]
         case .webstorm: return ["com.jetbrains.WebStorm"]
-        case .androidstudio: return ["com.google.android.studio"]
-        case .opencode: return ["ai.opencode.desktop", "com.mitchellh.ghostty", "com.googlecode.iterm2"]
         case .gemini: return ["com.google.GeminiMacOS"]
         case .grok: return ["com.grokapp.desktop", "ai.x.grok"]
         case .deepseek: return ["com.deepseek.dsh", "com.deepseek.chat"]
-        case .perplexity: return ["ai.perplexity.mac"]
-        case .doubao: return ["com.bytedance.doubao.desktop", "com.bot.doubao", "com.bot.neotix.doubao"]
         case .kimi: return ["com.moonshot.kimi", "cn.moonshot.kimi"]
+        case .chatglm: return ["com.zhipu.chatglm", "cn.zhipuai.chatglm"]
         case .qwen: return ["com.alibaba.qwen", "com.aliyun.tongyi", "com.alibaba.tongyi"]
-        case .cherrystudio: return ["com.kangfenmao.CherryStudio"]
-        case .lmstudio: return ["ai.elementlabs.lmstudio"]
-        case .chatcut: return ["io.chatcut.desktop"]
-        case .manus: return ["ai.manus.agents", "im.manus.desktop"]
-        case .kaze: return ["dev.kite.browser"]
-        case .tabbit: return ["com.tabbit-ai.Tabbit"]
-        case .quark: return ["com.quark.desktop"]
-        case .chatglm: return ["com.zhipu.chatglm"]
-        case .ollama: return ["com.electron.ollama", "com.ollama.ollama"]
-        case .raycast: return ["com.raycast.macos"]
-        case .jan: return ["jan.ai.app"]
+        case .doubao: return ["com.bytedance.doubao.desktop", "com.bot.doubao", "com.bot.neotix.doubao"]
+        case .minimax: return ["com.minimaxi.hailuo", "io.minimax.desktop"]
+        case .perplexity: return ["ai.perplexity.mac"]
         case .lechat: return ["ai.mistral.lechat", "ai.mistral.chat"]
+        case .manus: return ["ai.manus.agents", "im.manus.desktop"]
         case .poe: return ["com.quora.poe.electron", "com.quora.poe"]
-        case .chatbox: return ["xyz.chatboxapp.app"]
-        case .lobechat: return ["com.lobehub.lobehub-desktop", "com.lobehub.desktop"]
-        case .anythingllm: return ["com.anythingllm", "com.mintplexlabs.anythingllm"]
-        case .nextchat: return ["com.yida.chatgpt.next.web"]
-        case .openwebui: return ["com.openwebui.desktop", "com.open-webui.desktop"]
-        case .gpt4all: return ["io.gpt4all.gpt4all", "ai.nomic.gpt4all"]
-        case .comfyui: return ["com.comfyorg.comfyui-electron", "org.comfy.desktop"]
         }
     }
 
@@ -260,54 +169,33 @@ public enum AgentID: String, CaseIterable, Codable, Sendable, Identifiable {
         // Calibrated macOS Tahoe Mineral & Titanium Tones (desaturated ~35% chroma for calm optical harmony)
         case .codex: return "#3E8C79"         // Alpine Sage
         case .antigravity: return "#5479B2"   // Sapphire Slate
+        case .claude: return "#AD6E54"        // Anthropic Clay
         case .cursor: return "#7165AD"        // Prism Iris
         case .grokbot: return "#B37452"       // Terracotta Sandstone
-        case .muse: return "#4E7CA8"          // Nordic Azure
-        case .claude: return "#AD6E54"        // Anthropic Clay
-        case .workbuddy: return "#498596"     // Fjord Teal
-        case .multica: return "#7A67A6"       // Twilight Amethyst
-        case .hermes: return "#A3687E"        // Dusty Rose
         case .windsurf: return "#428E85"      // Surf Mineral Teal
+        case .workbuddy: return "#498596"     // Fjord Teal
         case .trae: return "#4C9468"          // Moss Jade
         case .kiro: return "#7C62AD"          // Muted Violet
-        case .zed: return "#4A6FA5"           // Deep Fjord Blue
         case .vscode: return "#4878A8"        // Steel Azure
-        case .warp: return "#4A86A8"          // Mist Sky
         case .qoder: return "#6368A8"         // Slate Indigo
+        case .zed: return "#4A6FA5"           // Deep Fjord Blue
+        case .warp: return "#4A86A8"          // Mist Sky
         case .devin: return "#458C86"         // Celadon Teal
-        case .xcode: return "#4F7BB0"         // Dev Slate Blue
         case .intellij: return "#AD5F6E"      // Mineral Crimson
         case .pycharm: return "#4A9476"       // Botanical Green
         case .webstorm: return "#468996"      // Glacier Aqua
-        case .androidstudio: return "#529672" // Sage Green
-        case .opencode: return "#AD824C"      // Warm Ochre
         case .gemini: return "#597AB2"        // Starlight Slate
         case .grok: return "#788494"          // Titanium Silver
         case .deepseek: return "#536DA8"      // Mineral Cobalt
-        case .perplexity: return "#3E7C87"    // Slate Teal
-        case .doubao: return "#547EB0"        // Mist Blue
         case .kimi: return "#6B7685"          // Graphite Slate
+        case .chatglm: return "#4F6FB0"       // Zhipu Indigo
         case .qwen: return "#6A64A8"          // Star Iris
-        case .cherrystudio: return "#AD5E5E"  // Muted Garnet
-        case .lmstudio: return "#755FA6"      // Mineral Purple
-        case .chatcut: return "#7A6BA8"
-        case .manus: return "#6B7685"
-        case .kaze: return "#4E7FA6"
-        case .tabbit: return "#5C7FAE"
-        case .quark: return "#5470B0"
-        case .chatglm: return "#4F6FB0"
-        case .ollama: return "#6E7480"
-        case .raycast: return "#B0605E"
-        case .jan: return "#B08A4C"
-        case .lechat: return "#B57A4E"
-        case .poe: return "#7B66AD"
-        case .chatbox: return "#B0905C"
-        case .lobechat: return "#B07A5A"
-        case .anythingllm: return "#727985"
-        case .nextchat: return "#5272B0"
-        case .openwebui: return "#6A6F78"
-        case .gpt4all: return "#8E9A52"
-        case .comfyui: return "#9EA24E"
+        case .doubao: return "#547EB0"        // Mist Blue
+        case .minimax: return "#A8667A"       // Coral Rose
+        case .perplexity: return "#3E7C87"    // Slate Teal
+        case .lechat: return "#B57A4E"        // Mistral Amber
+        case .manus: return "#6B7685"         // Slate
+        case .poe: return "#7B66AD"           // Twilight Iris
         }
     }
 
@@ -352,54 +240,33 @@ extension AgentID {
         switch self {
         case .codex: return "OpenAI 翡翠绿"
         case .antigravity: return "Gemini 宝石蓝"
+        case .claude: return "Claude 陶土橙"
         case .cursor: return "Cursor 棱镜紫"
         case .grokbot: return "Grok Bot 曜橙"
-        case .muse: return "Muse 灵眸蓝"
-        case .claude: return "Claude 陶土橙"
-        case .workbuddy: return "腾讯云青蓝"
-        case .multica: return "Multica 矩阵紫"
-        case .hermes: return "Hermes 星云粉"
         case .windsurf: return "Windsurf 浪潮青"
+        case .workbuddy: return "腾讯云青蓝"
         case .trae: return "Trae 极光绿"
         case .kiro: return "Kiro 幻紫"
-        case .zed: return "Zed 深海蓝"
-        case .vscode: return "VS Code 经典蓝"
-        case .warp: return "Warp 霓虹蓝"
+        case .vscode: return "Copilot 钢蓝"
         case .qoder: return "Qoder 靛蓝"
+        case .zed: return "Zed 深海蓝"
+        case .warp: return "Warp 霓虹蓝"
         case .devin: return "Devin 碧青"
-        case .xcode: return "Xcode 研发蓝"
         case .intellij: return "JetBrains 绯红"
         case .pycharm: return "PyCharm 翠绿"
         case .webstorm: return "WebStorm 湖青"
-        case .androidstudio: return "Android 霓绿"
-        case .opencode: return "OpenCode 琥珀"
         case .gemini: return "Gemini 星辉蓝"
         case .grok: return "Grok 钛银"
         case .deepseek: return "DeepSeek 深蓝"
-        case .perplexity: return "Perplexity 墨青"
-        case .doubao: return "豆包晴蓝"
         case .kimi: return "Kimi 曜石灰"
-        case .qwen: return "通义星紫"
-        case .cherrystudio: return "Cherry 樱桃红"
-        case .lmstudio: return "LM Studio 电紫"
-        case .chatcut: return "ChatCut 剪影紫"
-        case .manus: return "Manus 石墨灰"
-        case .kaze: return "Kaze 晴岚蓝"
-        case .tabbit: return "Tabbit 雾蓝"
-        case .quark: return "夸克 星蓝"
-        case .chatglm: return "智谱 深蓝"
-        case .ollama: return "Ollama 羊驼灰"
-        case .raycast: return "Raycast 珊瑚红"
-        case .jan: return "Jan 暖金"
+        case .chatglm: return "智谱 靛蓝"
+        case .qwen: return "通义 星紫"
+        case .doubao: return "豆包 晴蓝"
+        case .minimax: return "MiniMax 珊瑚粉"
+        case .perplexity: return "Perplexity 墨青"
         case .lechat: return "Mistral 橙金"
+        case .manus: return "Manus 石墨灰"
         case .poe: return "Poe 暮紫"
-        case .chatbox: return "Chatbox 杏色"
-        case .lobechat: return "Lobe 暖橙"
-        case .anythingllm: return "AnythingLLM 钛灰"
-        case .nextchat: return "NextChat 宝蓝"
-        case .openwebui: return "Open WebUI 墨灰"
-        case .gpt4all: return "GPT4All 苔绿"
-        case .comfyui: return "Comfy 柠绿"
         }
     }
 
@@ -407,77 +274,62 @@ extension AgentID {
         switch self {
         case .codex: return URL(string: "https://chatgpt.com/codex/settings/usage")
         case .antigravity: return nil
+        case .claude: return URL(string: "https://claude.ai/settings/usage")
         case .cursor: return URL(string: "https://cursor.com/dashboard/spending")
         case .grokbot: return URL(string: "https://cursor.com/dashboard/spending")
-        case .muse: return URL(string: "https://www.meta.ai")
-        case .claude: return URL(string: "https://claude.ai/settings/usage")
-        case .workbuddy: return URL(string: "https://www.codebuddy.cn/profile/plan")
-        case .multica, .hermes: return nil
         case .windsurf: return URL(string: "https://windsurf.com/subscription/usage")
+        case .workbuddy: return URL(string: "https://www.codebuddy.cn/profile/plan")
         case .trae: return URL(string: "https://www.trae.ai/account-setting")
         case .kiro: return URL(string: "https://app.kiro.dev")
-        case .zed: return URL(string: "https://zed.dev/account")
         case .vscode: return URL(string: "https://github.com/settings/copilot")
-        case .warp: return URL(string: "https://app.warp.dev/billing")
         case .qoder: return URL(string: "https://qoder.com/account")
+        case .zed: return URL(string: "https://zed.dev/account")
+        case .warp: return URL(string: "https://app.warp.dev/billing")
         case .devin: return URL(string: "https://app.devin.ai/settings/billing")
-        case .xcode: return nil
         case .intellij, .pycharm, .webstorm: return URL(string: "https://account.jetbrains.com")
-        case .androidstudio: return URL(string: "https://gemini.google.com")
-        case .opencode: return nil
         case .gemini: return URL(string: "https://gemini.google.com")
         case .grok: return URL(string: "https://grok.com")
         case .deepseek: return URL(string: "https://platform.deepseek.com/usage")
+        case .kimi: return URL(string: "https://www.kimi.com/code")
+        case .chatglm: return URL(string: "https://open.bigmodel.cn/usercenter/proj-mgmt/rate-limits")
+        case .qwen: return URL(string: "https://bailian.console.aliyun.com")
+        case .doubao: return URL(string: "https://console.volcengine.com/ark")
+        case .minimax: return URL(string: "https://platform.minimaxi.com")
         case .perplexity: return URL(string: "https://www.perplexity.ai/settings/account")
-        case .doubao: return URL(string: "https://www.doubao.com")
-        case .kimi: return URL(string: "https://kimi.moonshot.cn")
-        case .qwen: return URL(string: "https://chat.qwen.ai")
-        case .cherrystudio, .lmstudio: return nil
-        case .chatcut: return URL(string: "https://chatcut.io")
-        case .manus: return URL(string: "https://manus.im")
-        case .kaze: return nil
-        case .tabbit: return nil
-        case .quark: return URL(string: "https://www.quark.cn")
-        case .chatglm: return URL(string: "https://chatglm.cn")
-        case .ollama: return nil
-        case .raycast: return URL(string: "https://www.raycast.com/pro")
-        case .jan: return nil
         case .lechat: return URL(string: "https://chat.mistral.ai")
-        case .poe: return URL(string: "https://poe.com")
-        case .chatbox: return nil
-        case .lobechat: return nil
-        case .anythingllm: return nil
-        case .nextchat: return nil
-        case .openwebui: return nil
-        case .gpt4all: return nil
-        case .comfyui: return nil
+        case .manus: return URL(string: "https://manus.im")
+        case .poe: return URL(string: "https://poe.com/settings")
         }
     }
 
     public var cookieDomainSuffixes: [String] {
         switch self {
         case .codex: return ["chatgpt.com", "openai.com"]
-        case .cursor, .grokbot: return ["cursor.com", "grok.com", "x.ai"]
-        case .muse: return ["meta.ai", "meta.com"]
+        case .antigravity: return []
         case .claude: return ["claude.ai", "anthropic.com"]
-        case .workbuddy: return ["codebuddy.cn", "tencent.com", "workbuddy.cn"]
+        case .cursor, .grokbot: return ["cursor.com", "grok.com", "x.ai"]
         case .windsurf: return ["windsurf.com", "codeium.com"]
+        case .workbuddy: return ["codebuddy.cn", "tencent.com", "workbuddy.cn"]
         case .trae: return ["trae.ai", "trae.cn"]
         case .kiro: return ["kiro.dev"]
-        case .zed: return ["zed.dev"]
         case .vscode: return ["github.com"]
-        case .warp: return ["warp.dev"]
         case .qoder: return ["qoder.com"]
+        case .zed: return ["zed.dev"]
+        case .warp: return ["warp.dev"]
         case .devin: return ["devin.ai"]
         case .intellij, .pycharm, .webstorm: return ["jetbrains.com"]
-        case .androidstudio, .gemini: return ["google.com"]
+        case .gemini: return ["google.com"]
         case .grok: return ["grok.com", "x.ai"]
         case .deepseek: return ["deepseek.com"]
+        case .kimi: return ["kimi.com", "moonshot.cn"]
+        case .chatglm: return ["bigmodel.cn", "chatglm.cn", "z.ai"]
+        case .qwen: return ["aliyun.com", "qwen.ai"]
+        case .doubao: return ["volcengine.com", "doubao.com"]
+        case .minimax: return ["minimaxi.com", "hailuoai.com", "minimax.io"]
         case .perplexity: return ["perplexity.ai"]
-        case .doubao: return ["doubao.com"]
-        case .kimi: return ["moonshot.cn", "kimi.com"]
-        case .qwen: return ["qwen.ai", "aliyun.com"]
-        default: return []
+        case .lechat: return ["mistral.ai"]
+        case .manus: return ["manus.im"]
+        case .poe: return ["poe.com"]
         }
     }
 }
@@ -525,7 +377,7 @@ public extension AgentID {
         installedAppURL != nil
     }
 
-    static let defaultCoreSet: [AgentID] = [.antigravity, .cursor, .grokbot, .muse, .codex, .claude, .workbuddy]
+    static let defaultCoreSet: [AgentID] = [.antigravity, .cursor, .grokbot, .codex, .claude, .workbuddy]
 }
 
 public struct QuotaWindow: Sendable, Equatable {
@@ -573,11 +425,13 @@ public struct QuotaWindow: Sendable, Equatable {
 
 public struct QuotaSnapshot: Sendable, Equatable {
     public let agentID: AgentID
-    public let remainingPercent: Double? // nil = unauthenticated or unavailable (0...100 drives water level)
-    public let creditsRemaining: Int?    // non-nil for Credits-based agents (e.g. WorkBuddy 积分)
+    public let remainingPercent: Double? // nil = unauthenticated or unavailable (NEVER fabricated as 100%!)
+    public let creditsRemaining: Int?    // non-nil for Credits-based agents (e.g. WorkBuddy / Windsurf 积分)
     public let creditsTotal: Int?
-    public let accountEmail: String?     // Logged-in account email / handle (e.g. hello@example.com)
-    public let planTier: String?         // Subscription plan & multiplier (e.g. Google AI Ultra, Pro Lite (5x), Max 20x, Plus)
+    public let balanceDisplay: String?   // non-nil for API currency balance pools (e.g. DeepSeek / Kimi "¥11.28")
+    public let dockBalanceShort: String? // compact currency label for 144x144 Dock icon (e.g. "¥11")
+    public let accountEmail: String?     // Logged-in account email / handle
+    public let planTier: String?         // Subscription plan & multiplier (e.g. Google AI Ultra, Pro Lite (5x), Max 20x)
     public let primaryLabel: String?
     public let resetsAt: Date?
     public let resetText: String?
@@ -594,6 +448,8 @@ public struct QuotaSnapshot: Sendable, Equatable {
         remainingPercent: Double?,
         creditsRemaining: Int? = nil,
         creditsTotal: Int? = nil,
+        balanceDisplay: String? = nil,
+        dockBalanceShort: String? = nil,
         accountEmail: String? = nil,
         planTier: String? = nil,
         primaryLabel: String? = nil,
@@ -611,6 +467,8 @@ public struct QuotaSnapshot: Sendable, Equatable {
         self.remainingPercent = remainingPercent.map { max(0, min(100, $0)) }
         self.creditsRemaining = creditsRemaining
         self.creditsTotal = creditsTotal
+        self.balanceDisplay = balanceDisplay?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.dockBalanceShort = dockBalanceShort?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.accountEmail = accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.planTier = planTier?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.primaryLabel = primaryLabel
@@ -626,7 +484,20 @@ public struct QuotaSnapshot: Sendable, Equatable {
     }
 
     public var isCreditsBased: Bool {
-        creditsRemaining != nil
+        creditsRemaining != nil || balanceDisplay != nil
+    }
+
+    /// True when quota/credits/balance/tier/error meaningfully changed (prevents repetitive 120s log spam).
+    public func hasMeaningfulChange(from previous: QuotaSnapshot?) -> Bool {
+        guard let prev = previous else { return true }
+        let curPct = remainingPercent.map { Int(round($0)) }
+        let prevPct = prev.remainingPercent.map { Int(round($0)) }
+        return curPct != prevPct
+            || creditsRemaining != prev.creditsRemaining
+            || balanceDisplay != prev.balanceDisplay
+            || planTier != prev.planTier
+            || requiresWebLogin != prev.requiresWebLogin
+            || errorMessage != prev.errorMessage
     }
 
     /// Compact pill badge for tight card headers (e.g. "AI Ultra", "Pro Lite · 5x", "Pro · 20x", "Max 20x", "Plus").
@@ -640,8 +511,17 @@ public struct QuotaSnapshot: Sendable, Equatable {
         if lower.contains("chatgpt plus")    { return "Plus" }
         if lower.contains("chatgpt team")    { return "Team" }
         if lower.contains("chatgpt go")      { return "Go" }
+        if lower.contains("copilot pro+")    { return "Pro+" }
+        if lower.contains("copilot pro")     { return "Copilot Pro" }
+        if lower.contains("copilot free")    { return "Free" }
+        if lower.contains("copilot business") { return "Business" }
+        if lower.contains("deepseek api")    { return "API 余额" }
+        if lower.contains("kimi api")        { return "API 余额" }
+        if lower.contains("coding plan")     { return "Coding Plan" }
+        if lower.contains("token plan")      { return "Token Plan" }
         if lower.hasPrefix("premium")        { return "Premium" }
         if lower.contains("supergrok heavy") { return "Heavy · 20x" }
+        if lower.contains("supergrok")       { return "SuperGrok" }
         if lower.contains("套餐")            { return raw.replacingOccurrences(of: "套餐", with: "").trimmingCharacters(in: .whitespaces) }
         if raw.count > 12 {
             return String(raw.prefix(11)) + "…"
@@ -661,8 +541,11 @@ public struct QuotaSnapshot: Sendable, Equatable {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// Formatted value for Settings Bento Card (e.g. "500 积分" or "85%").
+    /// Formatted value for Settings Bento Card (e.g. "¥11.28", "500 积分", or "85%").
     public func formattedCardValue(showPercentageSign: Bool) -> String {
+        if let bal = balanceDisplay {
+            return bal
+        }
         if let credits = creditsRemaining {
             return "\(credits) 积分"
         }
@@ -670,8 +553,14 @@ public struct QuotaSnapshot: Sendable, Equatable {
         return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
     }
 
-    /// Compact formatted value for the 144x144 Dock Icon (never appends % for Credits!).
+    /// Compact formatted value for the 144x144 Dock Icon (never appends % for Credits or Currency Balance!).
     public func formattedDockIconValue(showPercentageSign: Bool) -> String {
+        if let shortBal = dockBalanceShort {
+            return shortBal
+        }
+        if let bal = balanceDisplay {
+            return bal
+        }
         if let credits = creditsRemaining {
             if credits >= 10_000 {
                 return String(format: "%.0fk", Double(credits) / 1000.0)
@@ -687,8 +576,11 @@ public struct QuotaSnapshot: Sendable, Equatable {
         return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
     }
 
-    /// Formatted summary for Hover Tooltip & Menu Bar (e.g. "剩 500/500 积分" or "剩 85%").
+    /// Formatted summary for Hover Tooltip & Menu Bar (e.g. "余额 ¥11.28", "剩 500/500 积分", or "剩 85%").
     public func formattedTooltipValue(showPercentageSign: Bool) -> String {
+        if let bal = balanceDisplay {
+            return "余额 \(bal)"
+        }
         if let credits = creditsRemaining {
             if let total = creditsTotal, total > 0 {
                 return "剩 \(credits)/\(total) 积分"
@@ -757,65 +649,74 @@ public enum TooltipDetailMode: String, CaseIterable, Codable, Sendable, Identifi
 }
 
 public enum DockBadgeStyle: String, CaseIterable, Codable, Sendable, Identifiable {
-    case concentricAutoDodge = "concentricAutoDodge"
-    case cornerQuarterTopLeft = "cornerQuarterTopLeft"
-    case cornerQuarterBottomLeft = "cornerQuarterBottomLeft"
-    case semiLeft = "semiLeft"
-    case semiRight = "semiRight"
-    case semiTop = "semiTop"
-    case semiBottom = "semiBottom"
-    case concentricTopLeft = "concentricTopLeft"
-    case concentricCircle = "concentricCircle"
-    case haloText = "haloText"
+    // I · Liquid Water Styles (4: #01 Screenshot Replica, 2 Kept Pure-Text Styles, #19 Concentric Auto-Dodge)
+    case refTopTimerScrim = "refTopTimerScrim"
     case pureSplitText = "pureSplitText"
+    case haloText = "haloText"
+    case concentricAutoDodge = "concentricAutoDodge"
+
+    // II · Precision Optical & Hardware Instrument Styles (4: #07, #08, #09, #11)
+    case apertureSweep = "apertureSweep"
+    case retroLEDMatrix = "retroLEDMatrix"
+    case dualTrackHUD = "dualTrackHUD"
+    case braunAnalogNeedle = "braunAnalogNeedle"
+
+    // III · Luminous Micro-Cells & Floating Dynamic Pods (3: #15, #20, #23)
+    case bottomPrismCells = "bottomPrismCells"
+    case topDynamicIsland = "topDynamicIsland"
+    case topEnergyBrow = "topEnergyBrow"
 
     public var id: String { rawValue }
 
+    public var usesLiquidWater: Bool {
+        true
+    }
+
     public var title: String {
         switch self {
-        case .concentricAutoDodge:     return "同心 R角 · 智能避让"
-        case .cornerQuarterTopLeft:    return "左上 R角 · 扇形圆"
-        case .cornerQuarterBottomLeft: return "左下 R角 · 扇形圆"
-        case .semiLeft:                return "正左边缘 · 半圆"
-        case .semiRight:               return "正右边缘 · 半圆"
-        case .semiTop:                 return "正上边缘 · 半圆"
-        case .semiBottom:              return "正下边缘 · 半圆"
-        case .concentricTopLeft:       return "左上 · 同心 R角"
-        case .concentricCircle:        return "车辆提示 · 正圆"
-        case .haloText:                return "纯数字 · 微晶描边"
-        case .pureSplitText:           return "纯数字 · 动态反相"
+        case .refTopTimerScrim:    return "截图原版 · 顶栏时间 + 微阴白字"
+        case .pureSplitText:       return "纯数字 · 随水波动态反相"
+        case .haloText:            return "纯数字 · 微晶护边描边字"
+        case .concentricAutoDodge: return "同心 R角磨砂章 · 低水自动避让"
+        case .apertureSweep:       return "相机光学光圈扇叶扫描"
+        case .retroLEDMatrix:      return "复古像素 LED 辉光点阵带"
+        case .dualTrackHUD:        return "底部 5h/周限双轨微仪表 HUD"
+        case .braunAnalogNeedle:   return "博朗极简圆弧刻度 + 橙红指针"
+        case .bottomPrismCells:    return "底部 5 颗辉光小方块 + 双读数"
+        case .topDynamicIsland:    return "顶部居中毛玻璃灵动微岛"
+        case .topEnergyBrow:       return "顶部内弧发光能量眉"
         }
     }
 
     public var shortTitle: String {
         switch self {
-        case .concentricAutoDodge:     return "同心R角(避让)"
-        case .cornerQuarterTopLeft:    return "左上扇圆"
-        case .cornerQuarterBottomLeft: return "左下扇圆"
-        case .semiLeft:                return "正左半圆"
-        case .semiRight:               return "正右半圆"
-        case .semiTop:                 return "正上半圆"
-        case .semiBottom:              return "正下半圆"
-        case .concentricTopLeft:       return "左上同心R角"
-        case .concentricCircle:        return "同心正圆"
-        case .haloText:                return "微晶描边字"
-        case .pureSplitText:           return "动态反相字"
+        case .refTopTimerScrim:    return "截图顶栏时间"
+        case .pureSplitText:       return "动态反相字"
+        case .haloText:            return "微晶描边字"
+        case .concentricAutoDodge: return "同心R角(避让)"
+        case .apertureSweep:       return "光圈扇叶扫描"
+        case .retroLEDMatrix:      return "像素LED点阵"
+        case .dualTrackHUD:        return "双轨微仪表"
+        case .braunAnalogNeedle:   return "博朗圆弧指针"
+        case .bottomPrismCells:    return "底部5格晶块"
+        case .topDynamicIsland:    return "顶部灵动微岛"
+        case .topEnergyBrow:       return "顶部弧形光眉"
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .concentricAutoDodge:     return "inset.filled.bottomleft.rectangle"
-        case .cornerQuarterTopLeft:    return "circle.tophalf.filled"
-        case .cornerQuarterBottomLeft: return "circle.bottomhalf.filled"
-        case .semiLeft:                return "circle.lefthalf.filled"
-        case .semiRight:               return "circle.righthalf.filled"
-        case .semiTop:                 return "inset.filled.topthird.square"
-        case .semiBottom:              return "inset.filled.bottomthird.square"
-        case .concentricTopLeft:       return "inset.filled.topleft.rectangle"
-        case .concentricCircle:        return "smallcircle.filled.circle"
-        case .haloText:                return "textformat.123"
-        case .pureSplitText:           return "circle.lefthalf.striped.horizontal.inverse"
+        case .refTopTimerScrim:    return "inset.filled.topthird.square"
+        case .pureSplitText:       return "circle.lefthalf.striped.horizontal.inverse"
+        case .haloText:            return "textformat.123"
+        case .concentricAutoDodge: return "inset.filled.bottomleft.rectangle"
+        case .apertureSweep:       return "camera.aperture"
+        case .retroLEDMatrix:      return "circle.grid.3x3.fill"
+        case .dualTrackHUD:        return "chart.bar.xaxis"
+        case .braunAnalogNeedle:   return "gauge.with.needle"
+        case .bottomPrismCells:    return "square.grid.4x3.fill"
+        case .topDynamicIsland:    return "capsule.inset.filled"
+        case .topEnergyBrow:       return "弧"
         }
     }
 }

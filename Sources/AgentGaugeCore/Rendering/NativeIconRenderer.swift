@@ -31,7 +31,7 @@ public struct IconRenderParams: Sendable {
         showPercentageSign: Bool,
         waterTintHex: String? = nil,
         numberColorMode: NumberColorMode = .smartInvert,
-        badgeStyle: DockBadgeStyle = .concentricAutoDodge,
+        badgeStyle: DockBadgeStyle = .refTopTimerScrim,
         badgeScale: CGFloat = 1.50,
         badgeOpacity: CGFloat = 0.85
     ) {
@@ -68,6 +68,7 @@ private struct ShaderUniforms {
     var hasLabel: Float
     var colorMode: Float
     var styleKind: Float
+    var waterMode: Float
     var badgeOpacity: Float
     var tintR: Float
     var tintG: Float
@@ -90,8 +91,6 @@ public final class NativeIconRenderer {
     private var labelTexCache: [String: MTLTexture] = [:]
     /// Native 256×256 Retina tile resolution (offscreen export renderers may use a larger side).
     public let dockTileSide: Int
-    /// S2 Low-Water Auto-Dodge threshold (scaled for 1.5x badge height ~35%): when remaining <= 38%, badge parks in Top-Left concentric R-corner!
-    private let lowWaterDodgeThreshold: Double = 38.0
 
     private let device: MTLDevice?
     private let commandQueue: MTLCommandQueue?
@@ -168,7 +167,7 @@ public final class NativeIconRenderer {
 
             self.halfFloatPipeline = p16
             self.previewPipeline = p8
-            AppLogger.shared.log("Metal", "256x256 Retina S2 同心 R角着色器初始化成功 (\(dev.name))")
+            AppLogger.shared.log("Metal", "256x256 Retina 多模态余量着色器初始化成功 (\(dev.name))")
         } catch {
             self.halfFloatPipeline = nil
             self.previewPipeline = nil
@@ -194,16 +193,13 @@ public final class NativeIconRenderer {
         }
 
         let waterColor = resolvedWaterColor(agentID: agentID, hexOverride: params.waterTintHex)
-        let labelStr = snapshot.formattedDockIconValue(showPercentageSign: params.showPercentageSign)
-        let lblTex = (params.showDockBadge && params.hoverAlpha > 0.01)
-            ? badgeMaskTexture(
-                for: cached,
-                labelText: labelStr,
-                remaining: remaining,
-                badgeStyle: params.badgeStyle,
-                badgeScale: params.badgeScale
-            )
-            : nil
+        let lblTex = resolveOverlayTexture(
+            for: cached,
+            snapshot: snapshot,
+            remaining: remaining,
+            waterColor: waterColor,
+            params: params
+        )
 
         encodePass(
             cmdBuf: cmdBuf,
@@ -253,16 +249,13 @@ public final class NativeIconRenderer {
         }
 
         let waterColor = resolvedWaterColor(agentID: agentID, hexOverride: params.waterTintHex)
-        let labelStr = snapshot.formattedDockIconValue(showPercentageSign: params.showPercentageSign)
-        let lblTex = (params.showDockBadge && params.hoverAlpha > 0.01)
-            ? badgeMaskTexture(
-                for: cached,
-                labelText: labelStr,
-                remaining: remaining,
-                badgeStyle: params.badgeStyle,
-                badgeScale: params.badgeScale
-            )
-            : nil
+        let lblTex = resolveOverlayTexture(
+            for: cached,
+            snapshot: snapshot,
+            remaining: remaining,
+            waterColor: waterColor,
+            params: params
+        )
 
         encodePass(
             cmdBuf: cmdBuf,
@@ -323,9 +316,7 @@ public final class NativeIconRenderer {
         }
     }
 
-    /// Non-blocking single-command-buffer batch renderer for interactive UI sliders:
-    /// encodes up to 4 icons into ONE `MTLCommandBuffer` and awaits GPU completion asynchronously via `addCompletedHandler`
-    /// so `@MainActor` never blocks `NSSlider` mouse tracking!
+    /// Non-blocking single-command-buffer batch renderer for interactive UI sliders.
     public func renderPreviewBatchAsync(_ items: [PreviewBatchItem]) async -> [AgentID: CGImage] {
         guard let queue = commandQueue,
               let pipeline = previewPipeline,
@@ -348,16 +339,13 @@ public final class NativeIconRenderer {
 
             let slotTex = previewSlotTextures[idx]
             let waterColor = resolvedWaterColor(agentID: item.agentID, hexOverride: item.params.waterTintHex)
-            let labelStr = item.snapshot.formattedDockIconValue(showPercentageSign: item.params.showPercentageSign)
-            let lblTex = (item.params.showDockBadge && item.params.hoverAlpha > 0.01)
-                ? badgeMaskTexture(
-                    for: cached,
-                    labelText: labelStr,
-                    remaining: remaining,
-                    badgeStyle: item.params.badgeStyle,
-                    badgeScale: item.params.badgeScale
-                )
-                : nil
+            let lblTex = resolveOverlayTexture(
+                for: cached,
+                snapshot: item.snapshot,
+                remaining: remaining,
+                waterColor: waterColor,
+                params: item.params
+            )
 
             encodePass(
                 cmdBuf: cmdBuf,
@@ -433,6 +421,39 @@ public final class NativeIconRenderer {
         )
     }
 
+    private func resolveOverlayTexture(
+        for cached: CachedIcon,
+        snapshot: QuotaSnapshot,
+        remaining: Double,
+        waterColor: NSColor,
+        params: IconRenderParams
+    ) -> MTLTexture? {
+        guard params.showDockBadge, params.hoverAlpha > 0.01 else {
+            return nil
+        }
+        let labelStr = snapshot.formattedDockIconValue(showPercentageSign: params.showPercentageSign)
+        guard !labelStr.isEmpty else { return nil }
+
+        switch params.badgeStyle {
+        case .haloText, .pureSplitText:
+            return pureTextMaskTexture(
+                for: cached,
+                labelText: labelStr,
+                badgeStyle: params.badgeStyle,
+                badgeScale: params.badgeScale
+            )
+        default:
+            return craftedRGBAOverlayTexture(
+                for: cached,
+                snapshot: snapshot,
+                labelText: labelStr,
+                remaining: remaining,
+                waterColor: waterColor,
+                params: params
+            )
+        }
+    }
+
     private func encodePass(
         cmdBuf: MTLCommandBuffer,
         pipeline: MTLRenderPipelineState,
@@ -470,10 +491,22 @@ public final class NativeIconRenderer {
         switch params.badgeStyle {
         case .haloText:      styleKind = 1.0
         case .pureSplitText: styleKind = 2.0
-        default:             styleKind = 0.0
+        default:             styleKind = 3.0
         }
 
-        let tintVec = srgbVector(from: waterColor)
+        // Signature optical refractive liquid water wave underneath ALL 11 styles
+        let waterMode: Float = 1.0
+
+        // Alert-aware water tint on critical/low quota
+        let effectiveWaterNS: NSColor = if remaining <= 15 {
+            NSColor(srgbRed: 0.90, green: 0.25, blue: 0.22, alpha: 1.0)
+        } else if remaining <= 30 {
+            NSColor(srgbRed: 0.90, green: 0.54, blue: 0.12, alpha: 1.0)
+        } else {
+            waterColor
+        }
+
+        let tintVec = srgbVector(from: effectiveWaterNS)
         let fSide = Float(dockTileSide)
         let phase = Float(abs(agentID.rawValue.hashValue % 100)) * 0.06
         var uniforms = ShaderUniforms(
@@ -493,6 +526,7 @@ public final class NativeIconRenderer {
             hasLabel: labelTex != nil ? 1.0 : 0.0,
             colorMode: modeCode,
             styleKind: styleKind,
+            waterMode: waterMode,
             badgeOpacity: Float(params.badgeOpacity),
             tintR: tintVec.x,
             tintG: tintVec.y,
@@ -502,6 +536,8 @@ public final class NativeIconRenderer {
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
     }
+
+    // MARK: - Typography Helpers
 
     private func futuraBoldFont(size: CGFloat) -> NSFont {
         if let f = NSFont(name: "Futura-Bold", size: size) {
@@ -513,14 +549,24 @@ public final class NativeIconRenderer {
         return NSFont.monospacedDigitSystemFont(ofSize: size, weight: .heavy)
     }
 
-    /// Generates a `256×256` multi-channel mask for all 11 customizable `DockBadgeStyle`s + `badgeScale`:
-    /// - R channel = Badge / Semi-Circle / Quarter-Circle solid body (`0..1`, `0` for pure text styles)
-    /// - G channel = Optically centered `Futura-Bold` glyph fill (`0..1`)
-    /// - B channel = Crisp circular / R-corner border arc (`0..1`) or micro-halo stroke (`haloText`)
-    private func badgeMaskTexture(
+    private func sfRoundedFont(size: CGFloat, weight: NSFont.Weight = .heavy) -> NSFont {
+        let sys = NSFont.systemFont(ofSize: size, weight: weight)
+        if let desc = sys.fontDescriptor.withDesign(.rounded),
+           let rounded = NSFont(descriptor: desc, size: size) {
+            return rounded
+        }
+        return sys
+    }
+
+    private func sfMonoFont(size: CGFloat, weight: NSFont.Weight = .bold) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+    }
+
+    // MARK: - Preserved Pure-Text Multi-Channel Mask (`pureSplitText` & `haloText`)
+
+    private func pureTextMaskTexture(
         for cached: CachedIcon,
         labelText: String,
-        remaining: Double,
         badgeStyle: DockBadgeStyle,
         badgeScale: CGFloat
     ) -> MTLTexture? {
@@ -530,26 +576,11 @@ public final class NativeIconRenderer {
         let sc = max(0.60, min(1.85, badgeScale))
         let scalePct = Int(round(sc * 100.0))
 
-        // Only auto-dodge styles depend on whether remaining is above/below cutoff!
-        let approxDodgeH: CGFloat = (badgeStyle == .concentricCircle) ? (0.29 * sc) : (0.232 * sc)
-        let dodgeCutoff = Double(min(54.0, max(25.0, approxDodgeH * 100.0 + 4.0)))
-        let autoTopFlag: String
-        switch badgeStyle {
-        case .concentricAutoDodge, .concentricCircle:
-            autoTopFlag = (remaining <= dodgeCutoff) ? "T" : "B"
-        default:
-            autoTopFlag = "F"
-        }
-
-        let key = "v5-\(badgeStyle.rawValue)-\(scalePct)-\(autoTopFlag)-\(labelText)-\(Int(bRect.minX))-\(Int(bRect.minY))-\(Int(bRect.width))-\(Int(bRect.height))"
+        let key = "pt-v6-\(badgeStyle.rawValue)-\(scalePct)-\(labelText)-\(Int(bRect.minX))-\(Int(bRect.minY))-\(Int(bRect.width))-\(Int(bRect.height))"
         if let hit = labelTexCache[key] {
             return hit
         }
-        if labelTexCache.count > 400 {
-            for k in labelTexCache.keys.prefix(150) {
-                labelTexCache.removeValue(forKey: k)
-            }
-        }
+        trimLabelCacheIfNeeded()
 
         let side = dockTileSide
         let fSide = CGFloat(side)
@@ -580,30 +611,7 @@ public final class NativeIconRenderer {
         let unitStr = hasPercent ? "%" : ""
         let isCreditOrLong = !hasPercent && labelText.count >= 4
 
-        let rIcon = sMin * 0.225
-        let margin = round(sMin * 0.048)
-
-        let baseFactor: CGFloat
-        let maxTextWidthRatio: CGFloat
-        switch badgeStyle {
-        case .haloText, .pureSplitText:
-            baseFactor = 0.158
-            maxTextWidthRatio = 0.78
-        case .cornerQuarterTopLeft, .cornerQuarterBottomLeft, .semiLeft, .semiRight:
-            baseFactor = 0.136
-            maxTextWidthRatio = 0.56
-        case .semiTop, .semiBottom:
-            baseFactor = 0.138
-            maxTextWidthRatio = 0.68
-        case .concentricCircle:
-            baseFactor = 0.138
-            maxTextWidthRatio = 0.70
-        case .concentricAutoDodge, .concentricTopLeft:
-            baseFactor = 0.140
-            maxTextWidthRatio = 0.77
-        }
-
-        var mainFs = max(14.0, round(sMin * baseFactor * sc * (isCreditOrLong ? 0.85 : 1.0)))
+        var mainFs = max(14.0, round(sMin * 0.158 * sc * (isCreditOrLong ? 0.85 : 1.0)))
         var unitFs = max(9.0, round(mainFs * 0.54))
         var mainFont = futuraBoldFont(size: mainFs)
         var unitFont = futuraBoldFont(size: unitFs)
@@ -627,7 +635,7 @@ public final class NativeIconRenderer {
         }
         var totalTextW = mainAdv + unitGap + unitAdv
 
-        let maxTextW = sMin * maxTextWidthRatio
+        let maxTextW = sMin * 0.78
         if totalTextW > maxTextW && totalTextW > 1 {
             let ratio = maxTextW / totalTextW
             mainFs = max(13.0, round(mainFs * ratio))
@@ -644,100 +652,11 @@ public final class NativeIconRenderer {
             totalTextW = mainAdv + unitGap + unitAdv
         }
 
-        let capH = mainFont.capHeight
         ctx.setBlendMode(.plusLighter)
+        let textStartX = round(bRect.minX + sMin * 0.085)
+        let textBaseY = round(bRect.minY + sMin * 0.115)
 
-        var shapePath: CGPath?
-        var textStartX: CGFloat = 0
-        var textBaseY: CGFloat = 0
-
-        switch badgeStyle {
-        case .concentricAutoDodge, .concentricTopLeft:
-            let pillH = min(sMin - margin * 2, round(max(sMin * 0.232 * sc, mainFs * 1.44)))
-            let pillW = min(sMin - margin * 2, round(max(pillH * 1.18, totalTextW + sMin * 0.125 * min(1.3, sc))))
-            let rPill = min(pillH * 0.48, max(8.0, rIcon - margin))
-            let topLeft = (badgeStyle == .concentricTopLeft) ? true : (remaining <= dodgeCutoff)
-            let pillX = round(bRect.minX + margin)
-            let pillY = topLeft ? round(bRect.maxY - margin - pillH) : round(bRect.minY + margin)
-            shapePath = CGPath(roundedRect: CGRect(x: pillX, y: pillY, width: pillW, height: pillH), cornerWidth: rPill, cornerHeight: rPill, transform: nil)
-            textStartX = round(pillX + (pillW - totalTextW) * 0.5)
-            textBaseY = round(pillY + (pillH - capH) * 0.5)
-
-        case .concentricCircle:
-            let maxRad = (sMin - margin * 2) * 0.48
-            let rad = min(maxRad, round(max(sMin * 0.145 * sc, (totalTextW + sMin * 0.10) * 0.55)))
-            let topLeft = (remaining <= dodgeCutoff)
-            let cx = round(bRect.minX + margin + rad)
-            let cy = topLeft ? round(bRect.maxY - margin - rad) : round(bRect.minY + margin + rad)
-            shapePath = CGPath(ellipseIn: CGRect(x: cx - rad, y: cy - rad, width: rad * 2, height: rad * 2), transform: nil)
-            textStartX = round(cx - totalTextW * 0.5)
-            textBaseY = round(cy - capH * 0.5)
-
-        case .cornerQuarterTopLeft, .cornerQuarterBottomLeft:
-            let isTop = (badgeStyle == .cornerQuarterTopLeft)
-            let cOff = sMin * 0.04
-            let cx0 = bRect.minX + cOff
-            let cy0 = isTop ? (bRect.maxY - cOff) : (bRect.minY + cOff)
-            let rad = min(sMin * 0.82, max(sMin * (0.31 + 0.15 * sc), totalTextW + sMin * 0.22))
-            shapePath = CGPath(ellipseIn: CGRect(x: cx0 - rad, y: cy0 - rad, width: rad * 2, height: rad * 2), transform: nil)
-            let span = rad + cOff
-            let tcx = bRect.minX + max(totalTextW * 0.5 + sMin * 0.08, span * 0.44)
-            let tcy = isTop
-                ? (bRect.maxY - max(capH * 0.5 + sMin * 0.09, span * 0.39))
-                : (bRect.minY + max(capH * 0.5 + sMin * 0.09, span * 0.39))
-            textStartX = round(tcx - totalTextW * 0.5)
-            textBaseY = round(tcy - capH * 0.5)
-
-        case .semiLeft, .semiRight:
-            let isLeft = (badgeStyle == .semiLeft)
-            let outShift = sMin * 0.08
-            let visW = min(sMin * 0.74, max(sMin * (0.25 + 0.145 * sc), totalTextW + sMin * 0.125))
-            let rad = visW + outShift
-            let cx0 = isLeft ? (bRect.minX - outShift) : (bRect.maxX + outShift)
-            let cy0 = bRect.midY
-            shapePath = CGPath(ellipseIn: CGRect(x: cx0 - rad, y: cy0 - rad, width: rad * 2, height: rad * 2), transform: nil)
-            let tcx = isLeft ? (bRect.minX + visW * 0.46) : (bRect.maxX - visW * 0.46)
-            textStartX = round(tcx - totalTextW * 0.5)
-            textBaseY = round(cy0 - capH * 0.5)
-
-        case .semiTop, .semiBottom:
-            let isTop = (badgeStyle == .semiTop)
-            let outShiftY = sMin * 0.18
-            let visH = min(sMin * 0.66, max(sMin * (0.21 + 0.125 * sc), capH + sMin * 0.16))
-            let dyWorst = outShiftY + visH * 0.47 + capH * 0.55
-            let halfWNeeded = totalTextW * 0.5 + sMin * 0.08
-            let rad = max(visH + outShiftY, hypot(dyWorst, halfWNeeded))
-            let effVisH = rad - outShiftY
-            let cx0 = bRect.midX
-            let cy0 = isTop ? (bRect.maxY + outShiftY) : (bRect.minY - outShiftY)
-            shapePath = CGPath(ellipseIn: CGRect(x: cx0 - rad, y: cy0 - rad, width: rad * 2, height: rad * 2), transform: nil)
-            let tcy = isTop ? (bRect.maxY - effVisH * 0.46) : (bRect.minY + effVisH * 0.46)
-            textStartX = round(cx0 - totalTextW * 0.5)
-            textBaseY = round(tcy - capH * 0.5)
-
-        case .haloText, .pureSplitText:
-            shapePath = nil
-            textStartX = round(bRect.minX + sMin * 0.085)
-            textBaseY = round(bRect.minY + sMin * 0.115)
-        }
-
-        if let path = shapePath {
-            // 1. Blue channel = Crisp 1pt Dock-scale circular / R-corner border arc (~4px at 256px Retina)
-            ctx.saveGState()
-            ctx.addPath(path)
-            ctx.setStrokeColor(red: 0, green: 0, blue: 1, alpha: 1)
-            ctx.setLineWidth(max(3.2, fSide * 0.016))
-            ctx.strokePath()
-            ctx.restoreGState()
-
-            // 2. Red channel = Badge / Semi-Circle / Quarter-Circle solid body
-            ctx.saveGState()
-            ctx.addPath(path)
-            ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
-            ctx.fillPath()
-            ctx.restoreGState()
-        } else if badgeStyle == .haloText {
-            // Pure halo text: stroke outer protective ring into Blue channel
+        if badgeStyle == .haloText {
             let blueMain = makeColoredCTLine(mainStr, font: mainFont, r: 0, g: 0, b: 1)
             let blueUnit = unitStr.isEmpty ? nil : makeColoredCTLine(unitStr, font: unitFont, r: 0, g: 0, b: 1)
             ctx.saveGState()
@@ -754,7 +673,6 @@ public final class NativeIconRenderer {
             ctx.restoreGState()
         }
 
-        // 3. Green channel = Optically cap-height-centered Futura-Bold glyphs
         ctx.saveGState()
         ctx.setTextDrawingMode(.fill)
         ctx.textMatrix = .identity
@@ -766,7 +684,718 @@ public final class NativeIconRenderer {
         }
         ctx.restoreGState()
 
+        return uploadTexture(from: ctx, dev: dev, cacheKey: key)
+    }
+
+    // MARK: - High-Craft Premultiplied RGBA Overlay Renderer (All 9 Curated Playground Styles)
+
+    private func craftedRGBAOverlayTexture(
+        for cached: CachedIcon,
+        snapshot: QuotaSnapshot,
+        labelText: String,
+        remaining: Double,
+        waterColor: NSColor,
+        params: IconRenderParams
+    ) -> MTLTexture? {
+        guard let dev = device else { return nil }
+
+        let bRect = cached.bodyRect
+        let side = dockTileSide
+        let fSide = CGFloat(side)
+
+        // Normalize around default slider settings (1.50 scale, 0.85 opacity) so 150% matches 1:1 calibrated proportions!
+        let relScale = max(0.68, min(1.24, params.badgeScale / 1.50))
+        let relOpacity = max(0.48, min(1.16, params.badgeOpacity / 0.85))
+
+        let rawCountdown = snapshot.formattedCountdown()
+        let countdownStr: String? = (rawCountdown == "—" || rawCountdown == "未启动" || rawCountdown == "运行中" || rawCountdown.isEmpty)
+            ? nil
+            : rawCountdown
+
+        let secondaryPct: Double = {
+            if let wk = snapshot.windows.first(where: { $0.label.contains("周") || $0.label.lowercased().contains("week") }) {
+                return wk.remainingPercent
+            }
+            if snapshot.windows.count >= 2 {
+                return snapshot.windows[1].remainingPercent
+            }
+            return remaining
+        }()
+
+        let remKey = Int(round(remaining))
+        let secKey = Int(round(secondaryPct))
+        let scKey = Int(round(relScale * 100))
+        let opKey = Int(round(relOpacity * 100))
+        let hexKey = waterColor.srgbHexString
+        let cdKey = countdownStr ?? "-"
+        let darkKey = cached.isDark ? "D" : "L"
+        let key = "rgba-v8-\(darkKey)-\(params.badgeStyle.rawValue)-\(params.numberColorMode.rawValue)-\(remKey)-\(secKey)-\(scKey)-\(opKey)-\(hexKey)-\(labelText)-\(cdKey)-\(side)-\(Int(bRect.minX))-\(Int(bRect.minY))"
+
+        if let hit = labelTexCache[key] {
+            return hit
+        }
+        trimLabelCacheIfNeeded()
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: side * 4,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            return nil
+        }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: fSide, height: fSide))
+        ctx.setAllowsAntialiasing(true)
+        ctx.setShouldAntialias(true)
+        ctx.interpolationQuality = .high
+
+        // Top-left origin (+x right, +y down) matching Playground Canvas 2D coordinates 1:1
+        ctx.translateBy(x: 0, y: fSide)
+        ctx.scaleBy(x: 1, y: -1)
+
+        let bx = bRect.minX
+        let by = fSide - bRect.maxY
+        let bw = bRect.width
+        let bh = bRect.height
+        let S = min(bw, bh)
+        let cx = bx + bw * 0.5
+        let cy = by + bh * 0.5
+
+        // Calibrated accent & smoked glass backing colors
+        let baseSRGB = waterColor.usingColorSpace(.sRGB) ?? waterColor
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+        baseSRGB.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        let vividTheme = NSColor(hue: h, saturation: min(0.82, max(0.54, s * 1.25)), brightness: max(0.88, b), alpha: 1.0)
+            .usingColorSpace(.sRGB) ?? baseSRGB
+
+        let accentRGB: (CGFloat, CGFloat, CGFloat) = if remaining <= 15 {
+            (1.0, 0.27, 0.23)   // Alert Coral #FF453A
+        } else if remaining <= 30 {
+            (1.0, 0.62, 0.04)   // Alert Amber #FF9F0A
+        } else {
+            (vividTheme.redComponent, vividTheme.greenComponent, vividTheme.blueComponent)
+        }
+
+        let bandRGB: (CGFloat, CGFloat, CGFloat) = switch params.numberColorMode {
+        case .smokeGray:
+            (0.23, 0.25, 0.30)
+        case .obsidianBlack:
+            (0.05, 0.06, 0.09)
+        case .smartInvert, .adaptiveInk, .white:
+            if remaining <= 15 {
+                (0.55, 0.13, 0.11)
+            } else if remaining <= 30 {
+                (0.54, 0.31, 0.06)
+            } else {
+                (
+                    baseSRGB.redComponent * 0.44 + 0.05,
+                    baseSRGB.greenComponent * 0.44 + 0.07,
+                    baseSRGB.blueComponent * 0.44 + 0.10
+                )
+            }
+        }
+
+        func cgColor(_ rgb: (CGFloat, CGFloat, CGFloat), _ alpha: CGFloat) -> CGColor {
+            CGColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: max(0, min(1, alpha)))
+        }
+
+        func addPill(_ rect: CGRect, radius: CGFloat) {
+            let r = max(0, min(radius, rect.width * 0.5, rect.height * 0.5))
+            ctx.addPath(CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil))
+        }
+
+        func addClockwiseArc(center: CGPoint, radius: CGFloat, from a0: CGFloat, to a1: CGFloat, includeCenter: Bool = false) {
+            let steps = max(16, Int(ceil(abs(a1 - a0) * 28.0)))
+            if includeCenter {
+                ctx.move(to: center)
+                ctx.addLine(to: CGPoint(x: center.x + cos(a0) * radius, y: center.y + sin(a0) * radius))
+            } else {
+                ctx.move(to: CGPoint(x: center.x + cos(a0) * radius, y: center.y + sin(a0) * radius))
+            }
+            for i in 1...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let ang = a0 + (a1 - a0) * t
+                ctx.addLine(to: CGPoint(x: center.x + cos(ang) * radius, y: center.y + sin(ang) * radius))
+            }
+            if includeCenter {
+                ctx.closePath()
+            }
+        }
+
+        func drawSmokedGlassPill(_ rect: CGRect, radius: CGFloat, tint: (CGFloat, CGFloat, CGFloat), alpha: CGFloat) {
+            let effA = max(0.35, min(0.95, alpha * relOpacity))
+            let path = CGPath(
+                roundedRect: rect,
+                cornerWidth: min(radius, rect.width * 0.5, rect.height * 0.5),
+                cornerHeight: min(radius, rect.width * 0.5, rect.height * 0.5),
+                transform: nil
+            )
+
+            ctx.saveGState()
+            ctx.setShadow(
+                offset: CGSize(width: 0, height: -rect.height * 0.07),
+                blur: rect.height * 0.22,
+                color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.26)
+            )
+            ctx.addPath(path)
+            ctx.setFillColor(cgColor(tint, effA))
+            ctx.fillPath()
+            ctx.restoreGState()
+
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.clip()
+            let topC = cgColor((min(1, tint.0 * 0.85 + 0.06), min(1, tint.1 * 0.85 + 0.07), min(1, tint.2 * 0.85 + 0.10)), effA)
+            let botC = cgColor((0.05, 0.06, 0.09), min(0.94, effA + 0.10))
+            if let grad = CGGradient(colorsSpace: colorSpace, colors: [topC, botC] as CFArray, locations: [0.0, 1.0]) {
+                ctx.drawLinearGradient(
+                    grad,
+                    start: CGPoint(x: rect.midX, y: rect.minY),
+                    end: CGPoint(x: rect.midX, y: rect.maxY),
+                    options: []
+                )
+            }
+            ctx.restoreGState()
+
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24))
+            ctx.setLineWidth(max(1.0, S * 0.008))
+            ctx.strokePath()
+            ctx.restoreGState()
+        }
+
+        enum TextAlignMode { case left, center, right }
+
+        func drawCrispText(
+            _ text: String,
+            font: NSFont,
+            color: NSColor = .white,
+            x: CGFloat,
+            midY: CGFloat,
+            align: TextAlignMode,
+            maxWidth: CGFloat? = nil,
+            shadowAlpha: CGFloat = 0.28,
+            shadowBlur: CGFloat = 0.022
+        ) {
+            var useFont = font
+            var attr = NSAttributedString(string: text, attributes: [.font: useFont, .foregroundColor: color])
+            var sz = attr.size()
+            if let mw = maxWidth, sz.width > mw, sz.width > 1 {
+                let scaled = max(9.0, floor(useFont.pointSize * (mw / sz.width)))
+                useFont = useFont.fontName.lowercased().contains("mono")
+                    ? sfMonoFont(size: scaled, weight: .bold)
+                    : sfRoundedFont(size: scaled, weight: .heavy)
+                attr = NSAttributedString(string: text, attributes: [.font: useFont, .foregroundColor: color])
+                sz = attr.size()
+            }
+
+            let drawX: CGFloat = switch align {
+            case .left:   x
+            case .center: x - sz.width * 0.5
+            case .right:  x - sz.width
+            }
+            let drawY = midY - sz.height * 0.5
+
+            ctx.saveGState()
+            if shadowAlpha > 0.01 {
+                ctx.setShadow(
+                    offset: CGSize(width: 0, height: -S * 0.007),
+                    blur: S * shadowBlur,
+                    color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: shadowAlpha)
+                )
+            }
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+            attr.draw(at: NSPoint(x: drawX, y: drawY))
+            NSGraphicsContext.restoreGraphicsState()
+            ctx.restoreGState()
+        }
+
+        // Exact screenshot-caliber bottom-left subtle shadow patch + crisp white percentage
+        func drawRefCornerPercent(scale: CGFloat = 0.258, baseScrimAlpha: CGFloat = 0.26) {
+            let isLong = !labelText.hasSuffix("%") && labelText.count >= 4
+            let fs = round(S * scale * relScale * (isLong ? 0.86 : 1.0))
+            var font = sfRoundedFont(size: max(12, fs), weight: .heavy)
+            var attr = NSAttributedString(string: labelText, attributes: [.font: font, .foregroundColor: NSColor.white])
+            var sz = attr.size()
+            let maxW = S * 0.72
+            if sz.width > maxW && sz.width > 1 {
+                font = sfRoundedFont(size: max(11, floor(fs * (maxW / sz.width))), weight: .heavy)
+                attr = NSAttributedString(string: labelText, attributes: [.font: font, .foregroundColor: NSColor.white])
+                sz = attr.size()
+            }
+
+            let padL = S * 0.078
+            let padR = S * 0.048
+            let tabR = S * 0.064
+            let capH = font.capHeight
+            let textBottomInset = S * 0.056
+            let tabRightX = bx + padL + sz.width + padR
+            let tabTopY = (by + bh) - (textBottomInset + capH + S * 0.052)
+
+            // Boost corner scrim automatically on light/white icons when low water drops below the top of the digits!
+            let lowWaterLightBoost: CGFloat = (!cached.isDark && remaining < 34.0) ? 0.18 : ((!cached.isDark) ? 0.06 : 0.0)
+            let effectiveBaseScrim = baseScrimAlpha + lowWaterLightBoost
+            let scrimA: CGFloat = switch params.numberColorMode {
+            case .obsidianBlack: min(0.72, (effectiveBaseScrim + 0.16) * relOpacity)
+            case .smokeGray:     min(0.62, (effectiveBaseScrim + 0.06) * relOpacity)
+            default:             min(0.62, effectiveBaseScrim * relOpacity)
+            }
+
+            // Extend left & bottom past bodyRect so Metal's orig.a clips flush to the native squircle corner!
+            ctx.saveGState()
+            ctx.beginPath()
+            ctx.move(to: CGPoint(x: -4, y: fSide + 4))
+            ctx.addLine(to: CGPoint(x: -4, y: tabTopY))
+            ctx.addLine(to: CGPoint(x: tabRightX - tabR, y: tabTopY))
+            ctx.addQuadCurve(to: CGPoint(x: tabRightX, y: tabTopY + tabR), control: CGPoint(x: tabRightX, y: tabTopY))
+            ctx.addLine(to: CGPoint(x: tabRightX, y: fSide + 4))
+            ctx.closePath()
+            ctx.setFillColor(CGColor(srgbRed: 0.03, green: 0.05, blue: 0.09, alpha: scrimA))
+            ctx.fillPath()
+            ctx.restoreGState()
+
+            let visualMidY = (by + bh) - textBottomInset - capH * 0.52
+            drawCrispText(
+                labelText,
+                font: font,
+                x: bx + padL,
+                midY: visualMidY,
+                align: .left,
+                shadowAlpha: 0.34,
+                shadowBlur: 0.026
+            )
+        }
+
+        switch params.badgeStyle {
+        case .refTopTimerScrim:
+            // #01 Reference Screenshot 1:1 Replica (Top translucent countdown band + bottom-left subtle dark shadow white %)
+            if let cd = countdownStr {
+                let bandH = S * 0.235 * max(0.85, min(1.12, relScale))
+                let bandBotY = by + bandH
+                ctx.saveGState()
+                let c0 = cgColor(bandRGB, min(0.90, 0.72 * relOpacity))
+                let c1 = cgColor(bandRGB, min(0.92, 0.80 * relOpacity))
+                if let g = CGGradient(colorsSpace: colorSpace, colors: [c0, c1] as CFArray, locations: [0, 1]) {
+                    ctx.saveGState()
+                    ctx.clip(to: CGRect(x: 0, y: 0, width: fSide, height: bandBotY))
+                    ctx.drawLinearGradient(g, start: CGPoint(x: cx, y: by), end: CGPoint(x: cx, y: bandBotY), options: [])
+                    ctx.restoreGState()
+                }
+                let sepH = max(1.2, S * 0.008)
+                ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.38))
+                ctx.fill(CGRect(x: 0, y: bandBotY - sepH, width: fSide, height: sepH))
+                ctx.restoreGState()
+
+                let cdFont = sfRoundedFont(size: round(S * 0.138 * max(0.85, min(1.12, relScale))), weight: .bold)
+                drawCrispText(cd, font: cdFont, x: cx, midY: by + bandH * 0.52, align: .center, maxWidth: bw * 0.84, shadowAlpha: 0.28)
+            }
+            drawRefCornerPercent(scale: 0.262, baseScrimAlpha: 0.26)
+
+        case .concentricAutoDodge:
+            // #19 Concentric R-Corner Smoked Glass Pill (Auto-dodges to top-left when remaining <= 30%!)
+            let m = S * 0.068
+            let ph = min(bh * 0.42, S * 0.228 * relScale)
+            let fs = round(S * 0.148 * relScale)
+            let font = sfRoundedFont(size: max(11, fs), weight: .heavy)
+            let textW = NSAttributedString(string: labelText, attributes: [.font: font]).size().width
+            let pw = min(bw - m * 2, max(S * 0.48 * relScale, textW + S * 0.15))
+            let dodgeCutoff = Double(min(42.0, max(28.0, (ph / bh) * 100.0 + 7.0)))
+            let py = (remaining <= dodgeCutoff) ? (by + m) : (by + bh - ph - m)
+            let pillRect = CGRect(x: bx + m, y: py, width: pw, height: ph)
+
+            drawSmokedGlassPill(pillRect, radius: S * 0.115, tint: bandRGB, alpha: 0.80)
+            drawCrispText(labelText, font: font, x: pillRect.midX, midY: pillRect.midY, align: .center, maxWidth: pw * 0.84)
+
+        case .apertureSweep:
+            // #07 Camera Optical Aperture Sweep + Subtle Corner Scrim (Lightened sector so signature optical water shines underneath!)
+            let consumed = max(0.0, min(1.0, 1.0 - remaining / 100.0))
+            let startA = -CGFloat.pi * 0.5
+            let splitA = startA + CGFloat.pi * 2.0 * CGFloat(consumed)
+
+            if consumed > 0.005 {
+                ctx.saveGState()
+                ctx.beginPath()
+                addClockwiseArc(center: CGPoint(x: cx, y: cy), radius: S * 0.85, from: startA, to: splitA, includeCenter: true)
+                ctx.clip()
+                let r0 = CGColor(srgbRed: 0.04, green: 0.06, blue: 0.09, alpha: min(0.42, 0.18 * relOpacity))
+                let r1 = CGColor(srgbRed: 0.03, green: 0.04, blue: 0.07, alpha: min(0.54, 0.34 * relOpacity))
+                if let rg = CGGradient(colorsSpace: colorSpace, colors: [r0, r1] as CFArray, locations: [0, 1]) {
+                    ctx.drawRadialGradient(
+                        rg,
+                        startCenter: CGPoint(x: cx, y: cy),
+                        startRadius: S * 0.04,
+                        endCenter: CGPoint(x: cx, y: cy),
+                        endRadius: S * 0.68,
+                        options: [.drawsAfterEndLocation]
+                    )
+                }
+                ctx.restoreGState()
+            }
+
+            // 12 precision inner horology ticks (no outer ring!)
+            ctx.saveGState()
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.38))
+            ctx.setLineWidth(max(1.2, S * 0.011))
+            for i in 0..<12 {
+                let ang = (CGFloat(i) / 12.0) * CGFloat.pi * 2.0 - CGFloat.pi * 0.5
+                let r1 = S * 0.36
+                let r2 = S * ((i % 3 == 0) ? 0.405 : 0.385)
+                ctx.move(to: CGPoint(x: cx + cos(ang) * r1, y: cy + sin(ang) * r1))
+                ctx.addLine(to: CGPoint(x: cx + cos(ang) * r2, y: cy + sin(ang) * r2))
+            }
+            ctx.strokePath()
+
+            // Glowing white sweep blade + anodized center pivot
+            ctx.setShadow(offset: .zero, blur: S * 0.038, color: cgColor(accentRGB, 0.85))
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.96))
+            ctx.setLineWidth(max(1.6, S * 0.016))
+            ctx.move(to: CGPoint(x: cx, y: cy))
+            ctx.addLine(to: CGPoint(x: cx + cos(splitA) * S * 0.72, y: cy + sin(splitA) * S * 0.72))
+            ctx.strokePath()
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)
+
+            let pivR = S * 0.028
+            let pivRect = CGRect(x: cx - pivR, y: cy - pivR, width: pivR * 2, height: pivR * 2)
+            ctx.setFillColor(cgColor(accentRGB, 1.0))
+            ctx.fillEllipse(in: pivRect)
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.95))
+            ctx.setLineWidth(max(1.0, S * 0.01))
+            ctx.strokeEllipse(in: pivRect)
+            ctx.restoreGState()
+
+            drawRefCornerPercent(scale: 0.248, baseScrimAlpha: 0.28)
+
+        case .retroLEDMatrix:
+            // #08 Retro Pixel Phosphor LED Matrix Window over Signature Optical Water
+            let m = S * 0.066
+            let winW = bw - m * 2
+            let winH = min(bh * 0.38, S * 0.262 * relScale)
+            let winRect = CGRect(x: bx + m, y: by + bh - winH - m, width: winW, height: winH)
+            drawSmokedGlassPill(winRect, radius: S * 0.126, tint: (0.08, 0.10, 0.14), alpha: 0.76)
+
+            let cols = 14, rows = 3
+            let mx0 = winRect.minX + winW * 0.10
+            let mw = winW * 0.80
+            let my0 = winRect.minY + winH * 0.22
+            let stepX = mw / CGFloat(cols - 1)
+            let stepY = winH * 0.135
+            let litCols = Int(round((remaining / 100.0) * Double(cols)))
+            let dotR = max(1.3, S * 0.0125 * relScale)
+
+            ctx.saveGState()
+            for c in 0..<cols {
+                let isLit = c < litCols
+                if isLit {
+                    ctx.setShadow(offset: .zero, blur: S * 0.028, color: cgColor(accentRGB, 0.85))
+                    ctx.setFillColor(cgColor(accentRGB, 1.0))
+                } else {
+                    ctx.setShadow(offset: .zero, blur: 0, color: nil)
+                    ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.14))
+                }
+                for rr in 0..<rows {
+                    let px = mx0 + CGFloat(c) * stepX
+                    let py = my0 + CGFloat(rr) * stepY
+                    ctx.fillEllipse(in: CGRect(x: px - dotR, y: py - dotR, width: dotR * 2, height: dotR * 2))
+                }
+            }
+            ctx.restoreGState()
+
+            let readFont = sfMonoFont(size: max(9.5, round(S * 0.106 * relScale)), weight: .bold)
+            let readY = winRect.minY + winH * 0.76
+            if let cd = countdownStr {
+                let compactCD = cd.replacingOccurrences(of: " ", with: "")
+                drawCrispText(labelText, font: readFont, x: mx0, midY: readY, align: .left, maxWidth: mw * 0.48, shadowAlpha: 0)
+                drawCrispText(
+                    compactCD,
+                    font: readFont,
+                    color: NSColor(white: 1.0, alpha: 0.72),
+                    x: mx0 + mw,
+                    midY: readY,
+                    align: .right,
+                    maxWidth: mw * 0.50,
+                    shadowAlpha: 0
+                )
+            } else {
+                drawCrispText(labelText, font: readFont, x: winRect.midX, midY: readY, align: .center, maxWidth: mw * 0.90, shadowAlpha: 0)
+            }
+
+        case .dualTrackHUD:
+            // #09 Bottom Dual-Track Micro HUD (5h + Weekly + Bold %) over Signature Optical Water
+            let m = S * 0.066
+            let hudW = bw - m * 2
+            let hudH = min(bh * 0.37, S * 0.248 * relScale)
+            let hudRect = CGRect(x: bx + m, y: by + bh - hudH - m, width: hudW, height: hudH)
+            drawSmokedGlassPill(hudRect, radius: S * 0.124, tint: bandRGB, alpha: 0.74)
+
+            let trackX = hudRect.minX + hudW * 0.09
+            let trackW = hudW * 0.43
+            let trackH = max(2.5, S * 0.042 * relScale)
+            let y1 = hudRect.minY + hudH * 0.36
+            let y2 = hudRect.minY + hudH * 0.67
+
+            // Track 1: Primary 5h quota
+            ctx.saveGState()
+            ctx.beginPath()
+            addPill(CGRect(x: trackX, y: y1 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)
+            ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.16))
+            ctx.fillPath()
+
+            let w1 = max(trackH, trackW * CGFloat(max(0, min(100, remaining)) / 100.0))
+            ctx.setShadow(offset: .zero, blur: S * 0.025, color: cgColor(accentRGB, 0.75))
+            ctx.beginPath()
+            addPill(CGRect(x: trackX, y: y1 - trackH * 0.5, width: w1, height: trackH), radius: trackH * 0.5)
+            ctx.setFillColor(cgColor(accentRGB, 1.0))
+            ctx.fillPath()
+            ctx.restoreGState()
+
+            // Track 2: Secondary / Weekly emerald quota
+            ctx.saveGState()
+            ctx.beginPath()
+            addPill(CGRect(x: trackX, y: y2 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)
+            ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.14))
+            ctx.fillPath()
+
+            let w2 = max(trackH, trackW * CGFloat(max(0, min(100, secondaryPct)) / 100.0))
+            ctx.beginPath()
+            addPill(CGRect(x: trackX, y: y2 - trackH * 0.5, width: w2, height: trackH), radius: trackH * 0.5)
+            ctx.setFillColor(CGColor(srgbRed: 0.37, green: 0.92, blue: 0.83, alpha: 1.0))
+            ctx.fillPath()
+            ctx.restoreGState()
+
+            let numFont = sfRoundedFont(size: max(11, round(S * 0.158 * relScale)), weight: .heavy)
+            drawCrispText(
+                labelText,
+                font: numFont,
+                x: hudRect.minX + hudW * 0.91,
+                midY: hudRect.midY,
+                align: .right,
+                maxWidth: hudW * 0.38,
+                shadowAlpha: 0.22
+            )
+
+        case .braunAnalogNeedle:
+            // #11 Braun Dieter Rams Analog Scale Arc + Orange-Red Needle over Signature Optical Water
+            // Adaptively deepen bottom smoked dial canopy on light/white icons when water drops below the scale!
+            let needsLightIconDialBoost = !cached.isDark && remaining < 48.0
+            let vTop = by + bh * (needsLightIconDialBoost ? 0.48 : 0.56)
+            let dialMaxA = needsLightIconDialBoost ? min(0.74, 0.58 * relOpacity) : min(0.56, 0.38 * relOpacity)
+            ctx.saveGState()
+            let vc0 = CGColor(srgbRed: 0.04, green: 0.05, blue: 0.08, alpha: 0)
+            let vc1 = CGColor(srgbRed: 0.04, green: 0.05, blue: 0.08, alpha: dialMaxA)
+            if let vg = CGGradient(colorsSpace: colorSpace, colors: [vc0, vc1] as CFArray, locations: [0, 1]) {
+                ctx.drawLinearGradient(vg, start: CGPoint(x: cx, y: vTop), end: CGPoint(x: cx, y: fSide), options: [.drawsAfterEndLocation])
+            }
+
+            let arcCy = by + bh * 0.94
+            let rad = S * 0.34 * max(0.86, min(1.10, relScale))
+            let a0 = -CGFloat.pi * 0.84
+            let a1 = -CGFloat.pi * 0.16
+
+            ctx.setShadow(offset: CGSize(width: 0, height: -S * 0.006), blur: S * 0.022, color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: cached.isDark ? 0.38 : 0.68))
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: cached.isDark ? 0.64 : 0.88))
+            ctx.setLineWidth(max(1.2, S * 0.015))
+            ctx.beginPath()
+            addClockwiseArc(center: CGPoint(x: cx, y: arcCy), radius: rad, from: a0, to: a1)
+            ctx.strokePath()
+
+            for i in 0...8 {
+                let ang = a0 + (a1 - a0) * (CGFloat(i) / 8.0)
+                let rIn = rad - S * ((i % 2 == 0) ? 0.042 : 0.024)
+                ctx.move(to: CGPoint(x: cx + cos(ang) * rIn, y: arcCy + sin(ang) * rIn))
+                ctx.addLine(to: CGPoint(x: cx + cos(ang) * rad, y: arcCy + sin(ang) * rad))
+            }
+            ctx.strokePath()
+
+            let needleA = a0 + (a1 - a0) * CGFloat(max(0, min(100, remaining)) / 100.0)
+            let needleInnerR = rad * 0.48
+            ctx.setShadow(offset: .zero, blur: S * 0.022, color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.55))
+            ctx.setStrokeColor(CGColor(srgbRed: 1.0, green: 0.35, blue: 0.21, alpha: 1.0))
+            ctx.setLineWidth(max(2.0, S * 0.022))
+            ctx.setLineCap(.round)
+            ctx.move(to: CGPoint(x: cx + cos(needleA) * needleInnerR, y: arcCy + sin(needleA) * needleInnerR))
+            ctx.addLine(to: CGPoint(x: cx + cos(needleA) * (rad + S * 0.026), y: arcCy + sin(needleA) * (rad + S * 0.026)))
+            ctx.strokePath()
+            ctx.restoreGState()
+
+            let dialFont = sfRoundedFont(size: max(11, round(S * 0.148 * relScale)), weight: .heavy)
+            drawCrispText(labelText, font: dialFont, x: cx, midY: by + bh * 0.875, align: .center, maxWidth: bw * 0.56, shadowAlpha: cached.isDark ? 0.52 : 0.75)
+
+        case .bottomPrismCells:
+            // #15 Bottom 5 Luminous Micro-Blocks + Floating Dual Readout over Signature Optical Water
+            let needsLightPrismBoost = !cached.isDark && remaining < 42.0
+            ctx.saveGState()
+            let vTop = by + bh * (needsLightPrismBoost ? 0.50 : 0.58)
+            let prismMaxA = needsLightPrismBoost ? min(0.76, 0.60 * relOpacity) : min(0.56, 0.38 * relOpacity)
+            let vc0 = CGColor(srgbRed: 0.03, green: 0.04, blue: 0.07, alpha: 0)
+            let vc1 = CGColor(srgbRed: 0.03, green: 0.04, blue: 0.07, alpha: prismMaxA)
+            if let vg = CGGradient(colorsSpace: colorSpace, colors: [vc0, vc1] as CFArray, locations: [0, 1]) {
+                ctx.drawLinearGradient(vg, start: CGPoint(x: cx, y: vTop), end: CGPoint(x: cx, y: fSide), options: [.drawsAfterEndLocation])
+            }
+            ctx.restoreGState()
+
+            let cells = 5
+            let px0 = bx + S * 0.09
+            let totalW = bw - S * 0.18
+            let gap = S * 0.026
+            let cw = (totalW - gap * CGFloat(cells - 1)) / CGFloat(cells)
+            let ch = max(4.0, S * 0.074 * relScale)
+            let cellY = by + bh - ch - S * 0.074
+            let step = 100.0 / Double(cells)
+
+            for i in 0..<cells {
+                let frac = CGFloat(max(0.0, min(1.0, (remaining - Double(i) * step) / step)))
+                let cellRect = CGRect(x: px0 + CGFloat(i) * (cw + gap), y: cellY, width: cw, height: ch)
+                let cr = ch * 0.40
+
+                ctx.saveGState()
+                ctx.beginPath()
+                addPill(cellRect, radius: cr)
+                ctx.setFillColor(CGColor(srgbRed: 0.06, green: 0.08, blue: 0.12, alpha: 0.38))
+                ctx.fillPath()
+                ctx.beginPath()
+                addPill(cellRect, radius: cr)
+                ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24))
+                ctx.setLineWidth(max(0.9, S * 0.006))
+                ctx.strokePath()
+
+                if frac > 0.005 {
+                    ctx.beginPath()
+                    addPill(cellRect, radius: cr)
+                    ctx.clip()
+                    ctx.setFillColor(cgColor(accentRGB, 1.0))
+                    ctx.fill(CGRect(x: cellRect.minX, y: cellRect.minY, width: cw * frac, height: ch))
+                    ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.30))
+                    ctx.fill(CGRect(x: cellRect.minX, y: cellRect.minY, width: cw * frac, height: ch * 0.30))
+                }
+                ctx.restoreGState()
+            }
+
+            let bigFont = sfRoundedFont(size: max(12, round(S * 0.212 * relScale)), weight: .heavy)
+            let textMidY = cellY - S * 0.118 * relScale
+            drawCrispText(labelText, font: bigFont, x: px0, midY: textMidY, align: .left, maxWidth: totalW * 0.58, shadowAlpha: 0.52)
+
+            if let cd = countdownStr {
+                let cdFont = sfRoundedFont(size: max(9, round(S * 0.108 * relScale)), weight: .semibold)
+                drawCrispText(
+                    cd,
+                    font: cdFont,
+                    color: NSColor(white: 1.0, alpha: 0.88),
+                    x: bx + bw - S * 0.09,
+                    midY: textMidY + S * 0.015,
+                    align: .right,
+                    maxWidth: totalW * 0.40,
+                    shadowAlpha: 0.45
+                )
+            }
+
+        case .topDynamicIsland:
+            // #20 Top-Center Smoked Glass Dynamic Island (Mini Ring + Bold %) over Signature Optical Water
+            let ph = min(bh * 0.34, S * 0.222 * relScale)
+            let pw = min(bw * 0.86, S * 0.65 * max(0.84, min(1.14, relScale)))
+            let islandRect = CGRect(x: cx - pw * 0.5, y: by + S * 0.068, width: pw, height: ph)
+            drawSmokedGlassPill(islandRect, radius: ph * 0.5, tint: bandRGB, alpha: 0.78)
+
+            let ringCenter = CGPoint(x: islandRect.minX + ph * 0.54, y: islandRect.midY)
+            let ringR = ph * 0.27
+            let ringW = max(1.6, S * 0.022 * relScale)
+
+            ctx.saveGState()
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22))
+            ctx.setLineWidth(ringW)
+            ctx.strokeEllipse(in: CGRect(x: ringCenter.x - ringR, y: ringCenter.y - ringR, width: ringR * 2, height: ringR * 2))
+
+            let endA = -CGFloat.pi * 0.5 + CGFloat.pi * 2.0 * CGFloat(max(0.02, min(1.0, remaining / 100.0)))
+            ctx.setStrokeColor(cgColor(accentRGB, 1.0))
+            ctx.setLineCap(.round)
+            ctx.beginPath()
+            addClockwiseArc(center: ringCenter, radius: ringR, from: -CGFloat.pi * 0.5, to: endA)
+            ctx.strokePath()
+            ctx.restoreGState()
+
+            let isFont = sfRoundedFont(size: max(10.5, round(S * 0.136 * relScale)), weight: .heavy)
+            drawCrispText(
+                labelText,
+                font: isFont,
+                x: islandRect.minX + pw * 0.63,
+                midY: islandRect.midY,
+                align: .center,
+                maxWidth: pw * 0.54,
+                shadowAlpha: 0.20
+            )
+
+        case .topEnergyBrow:
+            // #23 Top Curved Luminous Energy Brow + Centered Readout over Signature Optical Water
+            // Ensure rich smoked canopy on light/white icons so white brow & readout have >10:1 contrast!
+            ctx.saveGState()
+            let vBot = by + bh * (cached.isDark ? 0.33 : 0.37)
+            let topA = cached.isDark ? min(0.84, 0.64 * relOpacity) : min(0.92, 0.84 * relOpacity)
+            let midA = cached.isDark ? min(0.42, 0.30 * relOpacity) : min(0.76, 0.64 * relOpacity)
+            let bc0 = cgColor(bandRGB, topA)
+            let bc1 = cgColor(bandRGB, midA)
+            let bc2 = cgColor(bandRGB, 0)
+            if let bg = CGGradient(colorsSpace: colorSpace, colors: [bc0, bc1, bc2] as CFArray, locations: [0.0, 0.62, 1.0]) {
+                ctx.saveGState()
+                ctx.clip(to: CGRect(x: 0, y: 0, width: fSide, height: vBot))
+                ctx.drawLinearGradient(bg, start: CGPoint(x: cx, y: by), end: CGPoint(x: cx, y: vBot), options: [])
+                ctx.restoreGState()
+            }
+
+            let browCy = by + S * 0.455
+            let rad = S * 0.385
+            let a0 = -CGFloat.pi * 0.77
+            let a1 = -CGFloat.pi * 0.23
+            let strokeW = max(2.2, S * 0.035 * max(0.82, min(1.12, relScale)))
+
+            ctx.setLineCap(.round)
+            ctx.setLineWidth(strokeW)
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24))
+            ctx.beginPath()
+            addClockwiseArc(center: CGPoint(x: cx, y: browCy), radius: rad, from: a0, to: a1)
+            ctx.strokePath()
+
+            let progEnd = a0 + (a1 - a0) * CGFloat(max(0.02, min(1.0, remaining / 100.0)))
+            ctx.setShadow(offset: .zero, blur: S * 0.04, color: cgColor(accentRGB, 0.90))
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.98))
+            ctx.beginPath()
+            addClockwiseArc(center: CGPoint(x: cx, y: browCy), radius: rad, from: a0, to: progEnd)
+            ctx.strokePath()
+            ctx.restoreGState()
+
+            let browText: String = if let cd = countdownStr, let shortT = cd.split(separator: " ").first {
+                "\(labelText) · \(shortT)"
+            } else {
+                labelText
+            }
+            let browFont = sfRoundedFont(size: max(10.0, round(S * 0.118 * relScale)), weight: .heavy)
+            drawCrispText(browText, font: browFont, x: cx, midY: by + S * 0.248, align: .center, maxWidth: bw * 0.70, shadowAlpha: 0.40)
+
+        case .haloText, .pureSplitText:
+            break
+        }
+
+        return uploadTexture(from: ctx, dev: dev, cacheKey: key)
+    }
+
+    private func trimLabelCacheIfNeeded() {
+        if labelTexCache.count > 360 {
+            for k in labelTexCache.keys.prefix(140) {
+                labelTexCache.removeValue(forKey: k)
+            }
+        }
+    }
+
+    private func uploadTexture(from ctx: CGContext, dev: MTLDevice, cacheKey: String) -> MTLTexture? {
         guard let bytes = ctx.data else { return nil }
+        let side = dockTileSide
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba8Unorm,
             width: side,
@@ -782,7 +1411,7 @@ public final class NativeIconRenderer {
             withBytes: bytes,
             bytesPerRow: side * 4
         )
-        labelTexCache[key] = tex
+        labelTexCache[cacheKey] = tex
         return tex
     }
 
@@ -843,7 +1472,6 @@ public final class NativeIconRenderer {
         var chromaWeight: Double = 0
 
         let inset = side / 6
-        // Scan near-center column/row with strict alpha >= 246 so bottom drop-shadows NEVER skew bodyRect downward!
         let midLo = side * 38 / 100
         let midHi = side * 62 / 100
         for row in 0..<side {
@@ -977,6 +1605,7 @@ public final class NativeIconRenderer {
         float hasLabel;
         float colorMode;
         float styleKind;
+        float waterMode;
         float badgeOpacity;
         float tintR;
         float tintG;
@@ -1009,9 +1638,9 @@ public final class NativeIconRenderer {
 
     inline float waveH(float x, float t, float amp, float tilt, float ph, float fr) {
         float nx = (x - 0.5) * 2.0;
-        return nx * tilt * 0.085
+        return nx * tilt * 0.055
              + sin(nx * 3.14159 * fr + t + ph) * amp
-             + sin(nx * 5.6 * fr - t * 1.28 + ph * 1.7) * (amp * 0.25);
+             + sin(nx * 5.2 * fr - t * 1.15 + ph * 1.7) * (amp * 0.22);
     }
 
     inline float3 boostSat(float3 c, float a) {
@@ -1028,13 +1657,12 @@ public final class NativeIconRenderer {
         return straight;
     }
 
-    // 9-tap frosted glass blur behind the Concentric Apple R-Corner Badge so underlying icon strokes never shatter small Dock text
     inline float3 sampleFrostedBackdrop(texture2d<float> tex, sampler s, float2 uv, float3 fallbackRGB) {
         float3 acc = float3(0.0);
         float wSum = 0.0;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
-                float2 off = float2(float(dx), float(dy)) * 0.028;
+                float2 off = float2(float(dx), float(dy)) * 0.026;
                 float3 rgb = sampleIconInterior(tex, s, uv + off, fallbackRGB);
                 float w = (dx == 0 && dy == 0) ? 2.0 : 1.0;
                 acc += rgb * w;
@@ -1066,6 +1694,9 @@ public final class NativeIconRenderer {
         }
 
         float3 origRGB = clamp(orig.rgb / max(orig.a, 1e-4), 0.0, 1.0);
+        float3 tint = float3(u.tintR, u.tintG, u.tintB);
+        float3 col = origRGB;
+        float3 cleanCol = origRGB;
 
         float2 bodyCenter = float2(u.bodyMinX + u.bodySpanX * 0.5, u.bodyMinY + u.bodySpanY * 0.5);
         float2 halfSpan   = float2(u.bodySpanX * 0.5, u.bodySpanY * 0.5);
@@ -1074,149 +1705,198 @@ public final class NativeIconRenderer {
         float rIcon       = min(u.bodySpanX, u.bodySpanY) * 0.225;
         float distToWall  = max(0.0, -sdRoundedBox(p, halfSpan, rIcon));
 
-        const float kSharp    = 1.00;
-        const float kRim      = 0.50;
-        const float kAmp      = 1.50;
-        const float kDual     = 1.00;
-        const float kRefract  = 2.20;
-        const float kDisp     = 0.39;
-        const float kCrest    = 0.79;
-        const float kReflect  = 0.99;
-        const float kCaustics = 0.35;
-        const float kDepth    = 1.00;
-        const float kBSize    = 1.42;
+        // ==================== Water Mode 2.0: Screenshot-Caliber Clean Translucent Gel Water ====================
+        if (u.waterMode > 1.5) {
+            float amp = 0.008 + u.wake * 0.010 + u.working * 0.004 + u.ripple * 0.022;
+            if (u.level <= 0.02 || u.level >= 0.98) amp *= 0.18;
 
-        float amp = (0.008 + u.wake * 0.014 + u.working * 0.005 + u.ripple * 0.026) * kAmp;
-        if (u.level <= 0.02 || u.level >= 0.98) amp *= 0.18;
+            float hFront = u.level + waveH(uv.x, u.waveT, amp, u.tilt, u.phase, 1.02);
+            float hBack  = u.level + 0.020 + waveH(uv.x, -u.waveT * 0.75, amp * 0.85, -u.tilt * 0.40, u.phase + 2.1, 0.86);
+            float aa = 0.0022;
+            float maskFront = smoothstep(hFront + aa, hFront - aa, bodyY);
+            float maskBack  = smoothstep(hBack + aa * 1.2, hBack - aa * 1.2, bodyY) * (1.0 - maskFront);
 
-        float hFront = u.level + waveH(uv.x, u.waveT, amp, u.tilt, u.phase, 1.06);
-        float hBack  = u.level + 0.028 * kDual + waveH(uv.x, -u.waveT * 0.78, amp * 0.92, -u.tilt * 0.45, u.phase + 2.40, 0.88);
+            float3 gelColor = boostSat(tint, 0.28);
+            if (maskBack > 0.001) {
+                float3 bc = mix(origRGB, gelColor, 0.28);
+                col = mix(col, bc, maskBack * pres);
+            }
+            if (maskFront > 0.001) {
+                float depthBelow = max(0.0, hFront - bodyY);
+                float normDepth = clamp(depthBelow / max(0.18, u.level), 0.0, 1.0);
+                float surfaceLens = exp(-depthBelow * 14.0);
+                float2 bs = texUv + float2(0.0, surfaceLens * 0.012);
+                float3 refr = sampleIconInterior(iconTex, samp, bs, origRGB);
 
-        float eps = 0.004;
-        float slope = (waveH(uv.x + eps, u.waveT, amp, u.tilt, u.phase, 1.06)
-                     - waveH(uv.x - eps, u.waveT, amp, u.tilt, u.phase, 1.06)) / (2.0 * eps);
+                float gelAlpha = mix(0.50, 0.68, normDepth);
+                float3 gelTarget = mix(gelColor * 1.08, gelColor * 0.88, normDepth);
+                float3 wc = mix(refr, gelTarget, gelAlpha);
 
-        float aa = mix(0.0085, 0.0014, kSharp);
-        float maskFront = smoothstep(hFront + aa, hFront - aa, bodyY);
-        float maskBack  = smoothstep(hBack + aa * 1.15, hBack - aa * 1.15, bodyY) * (1.0 - maskFront) * kDual;
+                // Soft sub-meniscus glow + razor-sharp white meniscus crest (matching reference screenshot!)
+                float subGlow = smoothstep(0.028, 0.0, abs(depthBelow - 0.011));
+                float crest = smoothstep(0.0055, 0.0, depthBelow);
+                wc = mix(wc, float3(1.0), subGlow * 0.25);
+                wc = mix(wc, float3(1.0), crest * 0.90);
 
-        float3 tint = float3(u.tintR, u.tintG, u.tintB);
-        float3 col = origRGB;
-
-        if (maskBack > 0.001) {
-            float3 bc = (u.isDark > 0.5)
-                ? (col + tint * (0.16 * kDepth))
-                : (col * exp(-(float3(1.0) - tint) * (0.44 * kDepth)));
-            float bLine = smoothstep(0.0045, 0.0, abs(bodyY - hBack));
-            float3 bRimCol = (u.isDark > 0.5)
-                ? mix(tint, float3(1.0), 0.78)
-                : mix(tint * 0.42, tint * 0.75, 0.5);
-            bc = mix(bc, bRimCol, bLine * (0.35 + 0.45 * kRim));
-            col = mix(col, bc, maskBack * pres);
+                cleanCol = mix(cleanCol, wc, maskFront * pres);
+                col = mix(col, wc, maskFront * pres);
+            }
         }
+        // ==================== Water Mode 1.0: Signature Optical Refractive Bubble Water ====================
+        else if (u.waterMode > 0.5) {
+            const float kSharp    = 1.00;
+            const float kRim      = 0.50;
+            const float kAmp      = 1.04;
+            const float kDual     = 1.00;
+            const float kRefract  = 2.10;
+            const float kDisp     = 0.39;
+            const float kCrest    = 0.79;
+            const float kReflect  = 0.99;
+            const float kCaustics = 0.35;
+            const float kDepth    = 1.00;
+            const float kBSize    = 1.38;
 
-        float3 cleanCol = col;
+            float amp = (0.0065 + u.wake * 0.0092 + u.working * 0.0035 + u.ripple * 0.018) * kAmp;
+            if (u.level <= 0.02 || u.level >= 0.98) amp *= 0.18;
 
-        if (maskFront > 0.001) {
-            float depthBelow = max(0.0, hFront - bodyY);
-            float normDepth = clamp(depthBelow / max(0.18, u.level), 0.0, 1.0);
-            float surfaceLens = exp(-depthBelow * 13.0);
-            float wallSoft = smoothstep(0.055, 0.0, distToWall);
+            float hFront = u.level + waveH(uv.x, u.waveT, amp, u.tilt, u.phase, 1.02);
+            float hBack  = u.level + 0.022 * kDual + waveH(uv.x, -u.waveT * 0.74, amp * 0.88, -u.tilt * 0.40, u.phase + 2.40, 0.86);
 
-            float2 refOff = float2(-slope * 0.022 * surfaceLens * kRefract, -0.013 * surfaceLens * kRefract)
-                          - p * (0.024 * kRefract);
-            refOff.x += sin(bodyY * 15.0 + u.waveT + u.phase) * 0.003 * kRefract;
+            float eps = 0.004;
+            float slope = (waveH(uv.x + eps, u.waveT, amp, u.tilt, u.phase, 1.02)
+                         - waveH(uv.x - eps, u.waveT, amp, u.tilt, u.phase, 1.02)) / (2.0 * eps);
 
-            float bSpec = 0.0;
-            float bRim = 0.0;
-            float bDarkRim = 0.0;
-            float bAlpha = mix(0.92, 1.0, u.working);
+            float aa = mix(0.0085, 0.0014, kSharp);
+            float maskFront = smoothstep(hFront + aa, hFront - aa, bodyY);
+            float maskBack  = smoothstep(hBack + aa * 1.15, hBack - aa * 1.15, bodyY) * (1.0 - maskFront) * kDual;
 
-            for (int i = 0; i < 24; i++) {
-                float fi = float(i);
-                float seed = fract(fi * 0.3183 + u.phase * 0.17);
-                float bx = 0.11 + fract(fi * 0.271 + seed * 0.31) * 0.78;
-                float spd = 0.055 + fmod(fi, 5.0) * 0.019;
-                float prog = fract(fi * 0.163 + u.bubbleT * spd);
-                float by = 0.03 + prog * max(0.08, u.level - 0.045);
-                float sway = sin(u.waveT * 1.05 + fi * 2.3) * (u.working > 0.5 ? 0.015 : 0.012);
-                float2 bC = float2(u.bodyMinX + (bx + sway) * u.bodySpanX, u.bodyMinY + by * u.bodySpanY);
-                bool isHero = fmod(fi, 3.0) < 0.5;
-                float br = (isHero ? (0.0125 + fmod(fi, 2.0) * 0.0045) : (0.0055 + fmod(fi, 4.0) * 0.0022)) * kBSize;
+            if (maskBack > 0.001) {
+                float3 bc = (u.isDark > 0.5)
+                    ? (col + tint * (0.16 * kDepth))
+                    : (col * exp(-(float3(1.0) - tint) * (0.44 * kDepth)));
+                float bLine = smoothstep(0.0045, 0.0, abs(bodyY - hBack));
+                float3 bRimCol = (u.isDark > 0.5)
+                    ? mix(tint, float3(1.0), 0.78)
+                    : mix(tint * 0.42, tint * 0.75, 0.5);
+                bc = mix(bc, bRimCol, bLine * (0.35 + 0.45 * kRim));
+                col = mix(col, bc, maskBack * pres);
+            }
 
-                if (by < hFront - br * 1.2) {
-                    float2 dv = uv - bC;
-                    float dl = length(dv);
-                    if (dl < br * 1.3) {
-                        float lf = sin(prog * 3.14159) * bAlpha;
-                        if (dl < br) {
-                            float nz = sqrt(max(0.0, 1.0 - (dl / br) * (dl / br)));
-                            refOff += (dv / max(br, 1e-4)) * (1.0 - nz) * 0.022 * kRefract * lf;
+            cleanCol = col;
+
+            if (maskFront > 0.001) {
+                float depthBelow = max(0.0, hFront - bodyY);
+                float normDepth = clamp(depthBelow / max(0.18, u.level), 0.0, 1.0);
+                float surfaceLens = exp(-depthBelow * 13.0);
+                float wallSoft = smoothstep(0.055, 0.0, distToWall);
+
+                float2 refOff = float2(-slope * 0.022 * surfaceLens * kRefract, -0.013 * surfaceLens * kRefract)
+                              - p * (0.024 * kRefract);
+                refOff.x += sin(bodyY * 15.0 + u.waveT + u.phase) * 0.003 * kRefract;
+
+                float bSpec = 0.0;
+                float bRim = 0.0;
+                float bDarkRim = 0.0;
+                float bAlpha = mix(0.92, 1.0, u.working);
+
+                for (int i = 0; i < 24; i++) {
+                    float fi = float(i);
+                    float seed = fract(fi * 0.3183 + u.phase * 0.17);
+                    float bx = 0.11 + fract(fi * 0.271 + seed * 0.31) * 0.78;
+                    float spd = 0.055 + fmod(fi, 5.0) * 0.019;
+                    float prog = fract(fi * 0.163 + u.bubbleT * spd);
+                    float by = 0.03 + prog * max(0.08, u.level - 0.045);
+                    float sway = sin(u.waveT * 1.05 + fi * 2.3) * (u.working > 0.5 ? 0.015 : 0.012);
+                    float2 bC = float2(u.bodyMinX + (bx + sway) * u.bodySpanX, u.bodyMinY + by * u.bodySpanY);
+                    bool isHero = fmod(fi, 3.0) < 0.5;
+                    float br = (isHero ? (0.0125 + fmod(fi, 2.0) * 0.0045) : (0.0055 + fmod(fi, 4.0) * 0.0022)) * kBSize;
+
+                    if (by < hFront - br * 1.2) {
+                        float2 dv = uv - bC;
+                        float dl = length(dv);
+                        if (dl < br * 1.3) {
+                            float lf = sin(prog * 3.14159) * bAlpha;
+                            if (dl < br) {
+                                float nz = sqrt(max(0.0, 1.0 - (dl / br) * (dl / br)));
+                                refOff += (dv / max(br, 1e-4)) * (1.0 - nz) * 0.022 * kRefract * lf;
+                            }
+                            float ringW = max(0.0022, br * 0.26);
+                            bRim = max(bRim, smoothstep(ringW, 0.0, abs(dl - br * 0.90)) * lf);
+                            bDarkRim = max(bDarkRim, smoothstep(ringW * 1.2, 0.0, abs(dl - br * 1.02)) * lf * 0.65);
+                            bSpec = max(bSpec, smoothstep(max(0.0020, br * 0.38), 0.0, length(dv - float2(-br * 0.32, br * 0.32))) * lf);
                         }
-                        float ringW = max(0.0022, br * 0.26);
-                        bRim = max(bRim, smoothstep(ringW, 0.0, abs(dl - br * 0.90)) * lf);
-                        bDarkRim = max(bDarkRim, smoothstep(ringW * 1.2, 0.0, abs(dl - br * 1.02)) * lf * 0.65);
-                        bSpec = max(bSpec, smoothstep(max(0.0020, br * 0.38), 0.0, length(dv - float2(-br * 0.32, br * 0.32))) * lf);
                     }
                 }
+
+                float disp = (surfaceLens + wallSoft * 0.4) * 0.0032 * kDisp;
+                float2 bs = texUv + float2(refOff.x, -refOff.y);
+                float3 refracted;
+                refracted.r = sampleIconInterior(iconTex, samp, bs + float2(disp, 0.0), origRGB).r;
+                refracted.g = sampleIconInterior(iconTex, samp, bs, origRGB).g;
+                refracted.b = sampleIconInterior(iconTex, samp, bs - float2(disp, 0.0), origRGB).b;
+                refracted = boostSat(refracted, 0.18);
+
+                float3 wc;
+                if (u.isDark > 0.5) {
+                    wc = refracted * exp(-(float3(1.0) - tint) * (0.18 * kDepth * (0.3 + 0.7 * normDepth)));
+                    wc += tint * ((0.08 + 0.24 * smoothstep(0.0, 1.0, normDepth)) * kDepth);
+                } else {
+                    wc = refracted * exp(-(float3(1.0) - tint) * (0.88 * kDepth) * (0.28 + 0.72 * smoothstep(0.0, 1.0, normDepth)));
+                }
+
+                float c1 = sin(uv.x * 26.0 + slope * 8.0 + u.waveT * 1.6) * sin(bodyY * 20.0 - u.waveT * 1.1);
+                wc += mix(tint, float3(1.0), 0.7) * pow(max(0.0, c1), 3.0) * (1.0 - normDepth * 0.55) * (0.26 * kCaustics);
+
+                float diag = smoothstep(0.22, 0.0, abs((uv.x * 0.72 + uv.y * 0.52) - 0.56 - slope * 0.08));
+                float wallGlow = smoothstep(0.032, 0.0, distToWall);
+                wc += float3(1.0) * (diag * 0.13 + wallGlow * 0.14) * kReflect;
+
+                float3 wcClean = wc;
+
+                if (u.isDark > 0.5) {
+                    wc = mix(wc, mix(tint, float3(1.0), 0.82), bRim * 0.78);
+                    wc += float3(1.0) * bSpec * 0.95;
+                } else {
+                    wc = mix(wc, tint * 0.28, bDarkRim * 0.55);
+                    wc = mix(wc, float3(1.0), bRim * 0.72);
+                    wc = mix(wc, float3(1.0), bSpec * 0.98);
+                }
+
+                float crestW = 0.0042;
+                float capRim = smoothstep(crestW, 0.0, depthBelow);
+                float specBand = smoothstep(crestW * 1.5, 0.0, abs(depthBelow - crestW * 1.35));
+                if (u.isDark > 0.5) {
+                    wc += mix(tint, float3(1.0), 0.6) * specBand * (0.32 * kCrest);
+                    wc = mix(wc, float3(0.97, 0.99, 1.0), capRim * (0.65 + 0.30 * kRim) * kCrest);
+                } else {
+                    wc = mix(wc, float3(1.0), specBand * (0.78 * kCrest));
+                    float3 darkCap = mix(tint * 0.36, float3(0.05, 0.18, 0.42), 0.35);
+                    wc = mix(wc, darkCap, capRim * (0.76 * kRim));
+                }
+
+                cleanCol = mix(cleanCol, wcClean, maskFront * pres);
+                col = mix(col, wc, maskFront * pres);
             }
-
-            float disp = (surfaceLens + wallSoft * 0.4) * 0.0032 * kDisp;
-            float2 bs = texUv + float2(refOff.x, -refOff.y);
-            float3 refracted;
-            refracted.r = sampleIconInterior(iconTex, samp, bs + float2(disp, 0.0), origRGB).r;
-            refracted.g = sampleIconInterior(iconTex, samp, bs, origRGB).g;
-            refracted.b = sampleIconInterior(iconTex, samp, bs - float2(disp, 0.0), origRGB).b;
-            refracted = boostSat(refracted, 0.18);
-
-            float3 wc;
-            if (u.isDark > 0.5) {
-                wc = refracted * exp(-(float3(1.0) - tint) * (0.18 * kDepth * (0.3 + 0.7 * normDepth)));
-                wc += tint * ((0.08 + 0.24 * smoothstep(0.0, 1.0, normDepth)) * kDepth);
-            } else {
-                wc = refracted * exp(-(float3(1.0) - tint) * (0.88 * kDepth) * (0.28 + 0.72 * smoothstep(0.0, 1.0, normDepth)));
-            }
-
-            float c1 = sin(uv.x * 26.0 + slope * 8.0 + u.waveT * 1.6) * sin(bodyY * 20.0 - u.waveT * 1.1);
-            wc += mix(tint, float3(1.0), 0.7) * pow(max(0.0, c1), 3.0) * (1.0 - normDepth * 0.55) * (0.26 * kCaustics);
-
-            float diag = smoothstep(0.22, 0.0, abs((uv.x * 0.72 + uv.y * 0.52) - 0.56 - slope * 0.08));
-            float wallGlow = smoothstep(0.032, 0.0, distToWall);
-            wc += float3(1.0) * (diag * 0.13 + wallGlow * 0.14) * kReflect;
-
-            float3 wcClean = wc;
-
-            if (u.isDark > 0.5) {
-                wc = mix(wc, mix(tint, float3(1.0), 0.82), bRim * 0.78);
-                wc += float3(1.0) * bSpec * 0.95;
-            } else {
-                wc = mix(wc, tint * 0.28, bDarkRim * 0.55);
-                wc = mix(wc, float3(1.0), bRim * 0.72);
-                wc = mix(wc, float3(1.0), bSpec * 0.98);
-            }
-
-            float crestW = 0.0042;
-            float capRim = smoothstep(crestW, 0.0, depthBelow);
-            float specBand = smoothstep(crestW * 1.5, 0.0, abs(depthBelow - crestW * 1.35));
-            if (u.isDark > 0.5) {
-                wc += mix(tint, float3(1.0), 0.6) * specBand * (0.32 * kCrest);
-                wc = mix(wc, float3(0.97, 0.99, 1.0), capRim * (0.65 + 0.30 * kRim) * kCrest);
-            } else {
-                wc = mix(wc, float3(1.0), specBand * (0.78 * kCrest));
-                float3 darkCap = mix(tint * 0.36, float3(0.05, 0.18, 0.42), 0.35);
-                wc = mix(wc, darkCap, capRim * (0.76 * kRim));
-            }
-
-            cleanCol = mix(cleanCol, wcClean, maskFront * pres);
-            col = mix(col, wc, maskFront * pres);
         }
 
-        // Customizable Badge / Semi-Circle / Quarter-Circle / Pure Text Compositor
+        // ==================== Overlay Compositor ====================
         if (u.hasLabel > 0.5 && pres > 0.01) {
             float4 m = labelTex.sample(samp, clamp(texUv, 0.0, 1.0));
 
-            if (u.styleKind > 1.5) {
-                // Pure Split Text: bubble-free dynamic polarity cut
+            if (u.styleKind > 2.5) {
+                // StyleKind 3.0: Premultiplied RGBA High-Craft Overlay + GPU Frosted Glass Backdrop
+                float ovA = clamp(m.a, 0.0, 1.0) * pres;
+                if (ovA > 0.002) {
+                    // Apply genuine 9-tap frosted blur behind smoked-glass capsules/windows while keeping <38% shadow scrims crisp
+                    float frostAmt = smoothstep(0.42, 0.72, m.a) * 0.70 * pres;
+                    if (frostAmt > 0.01) {
+                        float3 frosted = sampleFrostedBackdrop(iconTex, samp, texUv, origRGB);
+                        col = mix(col, frosted, frostAmt);
+                    }
+                    col = clamp(m.rgb * pres + col * (1.0 - ovA), 0.0, 1.0);
+                }
+            } else if (u.styleKind > 1.5) {
+                // StyleKind 2.0: Pure Split Text (`动态反相字`)
                 float gA = clamp(m.g, 0.0, 1.0) * pres;
                 if (gA > 0.002) {
                     float bgLum = dot(cleanCol, float3(0.299, 0.587, 0.114));
@@ -1225,8 +1905,8 @@ public final class NativeIconRenderer {
                     float3 splitCol = mix(float3(1.0), inkDark, darkPart);
                     col = mix(col, splitCol, gA);
                 }
-            } else if (u.styleKind > 0.5) {
-                // Pure Halo Text: crisp glyph + protective micro-crystal outline
+            } else {
+                // StyleKind 1.0: Pure Halo Text (`微晶描边字`)
                 float gA = clamp(m.g, 0.0, 1.0) * pres;
                 float hA = clamp(m.b, 0.0, 1.0) * pres;
                 if (gA > 0.002 || hA > 0.002) {
@@ -1249,74 +1929,6 @@ public final class NativeIconRenderer {
                     }
                     col = mix(col, haloCol, hA * 0.92);
                     col = mix(col, glyphCol, gA);
-                }
-            } else {
-                // 9 Geometric Badge / Semi-Circle / Quarter-Circle / R-Corner Styles
-                float badgeA = clamp(m.r, 0.0, 1.0) * pres;
-                float textA  = clamp(m.g, 0.0, 1.0) * pres;
-                float rimA   = clamp(m.b, 0.0, 1.0) * pres;
-
-                if (badgeA > 0.002 || rimA > 0.002 || textA > 0.002) {
-                    float3 frosted = sampleFrostedBackdrop(iconTex, samp, texUv, origRGB);
-                    if (maskFront > 0.5) {
-                        frosted = mix(frosted, tint, 0.34);
-                    }
-
-                    float3 plateTarget;
-                    float3 glyphCol;
-                    float3 rimCol;
-                    float rimAlpha;
-
-                    if (u.colorMode < 0.5) {
-                        // Smart Invert (continuous uniform hairline rim — zero mid-curve color jump!)
-                        if (u.isDark > 0.5) {
-                            plateTarget = mix(float3(0.96, 0.98, 1.0), tint, 0.06);
-                            glyphCol    = float3(0.05, 0.08, 0.15);
-                            rimCol      = float3(0.72, 0.76, 0.84);
-                            rimAlpha    = 0.55;
-                        } else {
-                            plateTarget = mix(float3(0.06, 0.09, 0.16), tint * 0.20, 0.25);
-                            glyphCol    = float3(1.0);
-                            rimCol      = float3(0.36, 0.42, 0.52);
-                            rimAlpha    = 0.62;
-                        }
-                    } else if (u.colorMode < 1.5) {
-                        // Adaptive Theme Ink
-                        if (u.isDark > 0.5) {
-                            plateTarget = mix(float3(0.08, 0.11, 0.18), tint * 0.62, 0.52);
-                            glyphCol    = float3(1.0);
-                            rimCol      = mix(tint, float3(1.0), 0.55);
-                            rimAlpha    = 0.68;
-                        } else {
-                            plateTarget = mix(float3(0.93, 0.96, 1.0), tint, 0.24);
-                            glyphCol    = mix(float3(0.04, 0.07, 0.14), tint * 0.28, 0.55);
-                            rimCol      = mix(tint * 0.65, float3(0.35, 0.42, 0.52), 0.40);
-                            rimAlpha    = 0.62;
-                        }
-                    } else if (u.colorMode < 2.5) {
-                        // Classic White
-                        plateTarget = float3(0.08, 0.10, 0.16);
-                        glyphCol    = float3(1.0);
-                        rimCol      = float3(0.44, 0.48, 0.56);
-                        rimAlpha    = 0.62;
-                    } else if (u.colorMode < 3.5) {
-                        // Smoke Gray (高级烟灰半圆 + 均匀钛银灰细边 + 纯白字)
-                        plateTarget = float3(0.31, 0.34, 0.39);
-                        glyphCol    = float3(1.0);
-                        rimCol      = float3(0.56, 0.60, 0.66);
-                        rimAlpha    = 0.86;
-                    } else {
-                        // Obsidian Black (深黑曜石半圆 + 均匀枪灰细边 + 纯白字)
-                        plateTarget = float3(0.06, 0.07, 0.10);
-                        glyphCol    = float3(1.0);
-                        rimCol      = float3(0.42, 0.46, 0.53);
-                        rimAlpha    = 0.84;
-                    }
-
-                    float3 frostedPlate = mix(frosted, plateTarget, clamp(u.badgeOpacity, 0.35, 0.98));
-                    col = mix(col, frostedPlate, badgeA);
-                    col = mix(col, rimCol, rimA * rimAlpha);
-                    col = mix(col, glyphCol, textA);
                 }
             }
         }

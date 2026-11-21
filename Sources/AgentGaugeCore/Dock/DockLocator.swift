@@ -16,6 +16,25 @@ public struct DockTileMatch: Sendable {
     public let cocoaFrame: NSRect
     public let axFrame: CGRect
     public let cgCursor: CGPoint
+    public let isLiveAX: Bool
+
+    public init(
+        agentID: AgentID,
+        bundleID: String,
+        appURL: URL,
+        cocoaFrame: NSRect,
+        axFrame: CGRect,
+        cgCursor: CGPoint,
+        isLiveAX: Bool = false
+    ) {
+        self.agentID = agentID
+        self.bundleID = bundleID
+        self.appURL = appURL
+        self.cocoaFrame = cocoaFrame
+        self.axFrame = axFrame
+        self.cgCursor = cgCursor
+        self.isLiveAX = isLiveAX
+    }
 }
 
 public struct CachedDockTile: Sendable {
@@ -225,7 +244,8 @@ public final class DockLocator: @unchecked Sendable {
             appURL: appURL,
             cocoaFrame: iconRect,
             axFrame: axRect,
-            cgCursor: cgCursor
+            cgCursor: cgCursor,
+            isLiveAX: true
         ), false)
     }
 

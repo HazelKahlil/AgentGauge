@@ -27,7 +27,7 @@ public final class OverlayManager {
     private var showPercentageSign: Bool = true
     private var tooltipDetailMode: TooltipDetailMode = .multiModel
     private var numberColorMode: NumberColorMode = .smartInvert
-    private var badgeStyle: DockBadgeStyle = .concentricAutoDodge
+    private var badgeStyle: DockBadgeStyle = .refTopTimerScrim
     private var badgeScale: Double = 1.50
     private var badgeOpacity: Double = 0.85
     private var customWaterColors: [AgentID: String] = [:]
@@ -39,6 +39,7 @@ public final class OverlayManager {
     private var waveTime: CGFloat = 0
     private var bubbleTime: CGFloat = 0
     private var lastCursorX: CGFloat = 0
+    private var hasValidLastCursorX: Bool = false
 
     // Instant 0ms cached Dock geometry + authoritative ~30Hz off-main-thread AX verification
     private var cachedDockTiles: [CachedDockTile] = []
@@ -53,9 +54,9 @@ public final class OverlayManager {
     private var cachedDockPID: pid_t = 0
     private var lastDockPIDCheck: Date = .distantPast
 
-    // Calibrated baseline speed (80%) & tilt (67%) with lively hover acceleration
-    private let calibratedSpeedFactor: CGFloat = 0.25 + 0.80 * 2.2
-    private let calibratedTiltScale: CGFloat = 0.25 + 0.67 * 1.1
+    // Calm, steady optical liquid speed & critically-damped slosh scale (zero jitter)
+    private let calibratedSpeedFactor: CGFloat = 1.12
+    private let calibratedTiltScale: CGFloat = 0.58
 
     public init() {
         for id in AgentID.allCases {
@@ -233,7 +234,7 @@ public final class OverlayManager {
             // 1. Prefer fresh authoritative AX magnified match when cursor is still inside it;
             //    otherwise fall back to 0ms nearest-center cached Dock hit-test for instant switch response.
             if !hasOpenDockMenu, let liveMatch = resolveImmediateMatch(now: now, orientation: orientation) {
-                applyHitResult(match: liveMatch, hasOpenMenu: false, orientation: orientation, dt: dt)
+                applyHitResult(match: liveMatch, hasOpenMenu: false, orientation: orientation)
             } else if !cachedDockTiles.isEmpty && !hasOpenDockMenu {
                 // Cursor is near Dock but not over any tracked icon -> release cleanly
                 if motionStates.values.contains(where: { $0.isHovered }) {
@@ -250,11 +251,12 @@ public final class OverlayManager {
 
             // 3. Authoritative background AX hit-test at ~30Hz while near Dock: tracks live magnified center & icon switches
             if !isAXHitInFlight && now.timeIntervalSince(lastAXHitDate) >= 0.032 {
-                triggerAsyncAXVerify(orientation: orientation, dt: dt)
+                triggerAsyncAXVerify(orientation: orientation)
             }
         } else {
             hasOpenDockMenu = false
             latestAXMatch = nil
+            hasValidLastCursorX = false
             if motionStates.values.contains(where: { $0.isHovered }) {
                 clearHoverFlags()
                 tooltipPanel.hide()
@@ -267,6 +269,7 @@ public final class OverlayManager {
 
         // When unhovered & away from Dock, suspend timer completely -> 0.00% idle CPU!
         guard anyHoveredOrSettling else {
+            hasValidLastCursorX = false
             if !mouseNearDock {
                 renderTimer?.invalidate()
                 renderTimer = nil
@@ -277,12 +280,25 @@ public final class OverlayManager {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let allowAnimation = !reduceMotion && animationIntensity != .reduced
 
+        // Monotonic once-per-frame cursor velocity for calm gravity-level liquid slosh (immune to async AX timestamps!)
+        var frameVX: CGFloat = 0
+        if allowAnimation, motionStates.values.contains(where: { $0.isHovered }),
+           let liveCursor = CGEvent(source: nil)?.location {
+            if hasValidLastCursorX {
+                frameVX = (liveCursor.x - lastCursorX) / max(0.014, dt)
+            }
+            lastCursorX = liveCursor.x
+            hasValidLastCursorX = true
+        } else {
+            hasValidLastCursorX = false
+        }
+
         if allowAnimation {
             let anyWorking = enabledAgents.contains {
                 motionStates[$0]?.isHovered == true && snapshots[$0]?.isWorking == true
             }
-            let waveRate: CGFloat = (anyWorking ? 2.5 : 1.85) * calibratedSpeedFactor
-            let bubbleRate: CGFloat = (anyWorking ? 3.2 : 2.4) * calibratedSpeedFactor
+            let waveRate: CGFloat = (anyWorking ? 2.15 : 1.65) * calibratedSpeedFactor
+            let bubbleRate: CGFloat = (anyWorking ? 2.65 : 1.95) * calibratedSpeedFactor
             waveTime += dt * waveRate
             bubbleTime += dt * bubbleRate
             if waveTime > 10_000 { waveTime = 0 }
@@ -312,12 +328,20 @@ public final class OverlayManager {
             }
 
             if allowAnimation {
-                let stiffness: CGFloat = 26.0
-                let damping: CGFloat = 6.2
-                let accel = stiffness * (st.targetTilt - st.tilt) - damping * st.tiltVel
+                if st.isHovered && abs(frameVX) > 4.0 {
+                    st.tiltVel += max(-0.40, min(0.40, -frameVX * 0.00042))
+                }
+                // Gravity always pulls liquid surface back to dead-horizontal (targetTilt = 0) with near-critical damping
+                let stiffness: CGFloat = 20.0
+                let damping: CGFloat = 8.4
+                let accel = stiffness * (0.0 - st.tilt) - damping * st.tiltVel
                 st.tiltVel += accel * dt
-                st.tilt = max(-0.55, min(0.55, st.tilt + st.tiltVel * dt))
-                st.ripple *= pow(0.10, dt)
+                st.tilt = max(-0.38, min(0.38, st.tilt + st.tiltVel * dt))
+                if abs(st.tilt) < 0.002 && abs(st.tiltVel) < 0.005 {
+                    st.tilt = 0
+                    st.tiltVel = 0
+                }
+                st.ripple *= pow(0.14, dt)
                 if st.ripple < 0.005 { st.ripple = 0 }
             } else {
                 st.tilt = 0
@@ -371,24 +395,33 @@ public final class OverlayManager {
     private func resolveImmediateMatch(now: Date, orientation: DockOrientation) -> DockTileMatch? {
         guard let cgEvent = CGEvent(source: nil) else { return nil }
         let pt = cgEvent.location
+        let cachedNearest = instantCachedHitTest(at: pt, orientation: orientation)
 
-        // If we have a recent authoritative AX hit and cursor is still inside that live magnified tile, use its exact live frame
+        // If we have a recent authoritative AX hit and cursor hasn't crossed the midpoint toward an adjacent neighbor,
+        // keep its live magnified rect; otherwise switch on Frame 0 (0ms) to the neighbor!
         if let ax = latestAXMatch,
            enabledAgents.contains(ax.agentID),
            now.timeIntervalSince(latestAXVerifyDate) < 0.12,
-           ax.axFrame.insetBy(dx: -2, dy: -4).contains(pt) {
+           ax.axFrame.insetBy(dx: -1, dy: -4).contains(pt) {
+            if let neighbor = cachedNearest, neighbor.agentID != ax.agentID {
+                let distToAX = (orientation == .bottom) ? abs(pt.x - ax.axFrame.midX) : abs(pt.y - ax.axFrame.midY)
+                let distToNeighbor = (orientation == .bottom) ? abs(pt.x - neighbor.axFrame.midX) : abs(pt.y - neighbor.axFrame.midY)
+                if distToNeighbor + 2.0 < distToAX {
+                    return neighbor
+                }
+            }
             return DockTileMatch(
                 agentID: ax.agentID,
                 bundleID: ax.bundleID,
                 appURL: ax.appURL,
                 cocoaFrame: ax.cocoaFrame,
                 axFrame: ax.axFrame,
-                cgCursor: pt
+                cgCursor: pt,
+                isLiveAX: true
             )
         }
 
-        // Otherwise pick the closest cached tile along the Dock axis (eliminates array-order overlap stickiness)
-        return instantCachedHitTest(at: pt, orientation: orientation)
+        return cachedNearest
     }
 
     private func instantCachedHitTest(at pt: CGPoint, orientation: DockOrientation) -> DockTileMatch? {
@@ -441,7 +474,7 @@ public final class OverlayManager {
         }
     }
 
-    private func triggerAsyncAXVerify(orientation: DockOrientation, dt: CGFloat) {
+    private func triggerAsyncAXVerify(orientation: DockOrientation) {
         let dockPID = currentDockPID()
         guard dockPID > 0 else { return }
 
@@ -485,7 +518,7 @@ public final class OverlayManager {
                             axFrame: hm.axFrame
                         ))
                     }
-                    self.applyHitResult(match: hm, hasOpenMenu: false, orientation: orientation, dt: dt)
+                    self.applyHitResult(match: hm, hasOpenMenu: false, orientation: orientation)
                 }
             } else {
                 // Only clear hover if cursor didn't already sweep past a gap onto a neighbor during the 1-3ms AX IPC
@@ -531,7 +564,7 @@ public final class OverlayManager {
         return cachedDockPID
     }
 
-    private func applyHitResult(match: DockTileMatch?, hasOpenMenu: Bool, orientation: DockOrientation, dt: CGFloat) {
+    private func applyHitResult(match: DockTileMatch?, hasOpenMenu: Bool, orientation: DockOrientation) {
         if hasOpenMenu {
             clearHoverFlags()
             tooltipPanel.hide()
@@ -543,16 +576,11 @@ public final class OverlayManager {
             if let hm = match, hm.agentID == id,
                let snap = snapshots[id], snap.remainingPercent != nil {
                 if !st.isHovered {
-                    st.ripple = max(st.ripple, 0.36)
-                    lastCursorX = hm.cgCursor.x
-                } else {
-                    let vx = (hm.cgCursor.x - lastCursorX) / max(0.016, dt)
-                    lastCursorX = hm.cgCursor.x
-                    st.tiltVel += max(-1.2, min(1.2, vx * 0.0012))
+                    st.ripple = max(st.ripple, 0.18)
+                    hasValidLastCursorX = false
                 }
                 st.isHovered = true
-                let offset = (hm.cgCursor.x - hm.axFrame.midX) / max(32.0, hm.axFrame.width * 0.72)
-                st.targetTilt = max(-0.48, min(0.48, offset))
+                st.targetTilt = 0
             } else {
                 st.isHovered = false
                 st.targetTilt = 0
@@ -565,22 +593,14 @@ public final class OverlayManager {
            let snap = snapshots[hm.agentID],
            snap.remainingPercent != nil {
             let accent = customWaterColors[hm.agentID].flatMap(NSColor.fromHex) ?? hm.agentID.defaultAccentColor
-            // Prefer stationary unmagnified Dock tile geometry when close so all icons share one calm horizontal rail
-            // and never inherit magnification wobble from cursor micro-movements.
-            let anchorRect: NSRect
-            if let base = cachedDockTiles.first(where: { $0.agentID == hm.agentID }),
-               hypot(base.cocoaFrame.midX - hm.cocoaFrame.midX, base.cocoaFrame.midY - hm.cocoaFrame.midY) <= 44 {
-                anchorRect = base.cocoaFrame
-            } else {
-                anchorRect = hm.cocoaFrame
-            }
             tooltipPanel.show(
                 snapshot: snap,
-                anchorRect: anchorRect,
+                anchorRect: hm.cocoaFrame,
                 orientation: orientation,
                 detailMode: tooltipDetailMode,
                 showPercentageSign: showPercentageSign,
-                accentColor: accent
+                accentColor: accent,
+                isLiveAXRect: hm.isLiveAX
             )
         } else {
             tooltipPanel.hide()

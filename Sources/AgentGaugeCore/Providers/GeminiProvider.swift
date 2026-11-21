@@ -14,32 +14,33 @@ public struct GeminiProvider: UsageProvider {
             !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.GeminiMacOS").isEmpty
         }
 
-        // 1. Try local ~/.gemini/oauth_creds.json if unexpired
-        if let cliSnap = await fetchFromGeminiCLIOAuth(isWorking: isRunning) {
-            return cliSnap
-        }
-
-        // 2. Reuse live Google account Gemini pool from local Antigravity language_server (Google AI Ultra / Pro!)
+        // 1. Reuse live Google AI Ultra / Pro Gemini pool & plan tier from Antigravity CLI/RPC cache when available!
         let agSnap = await AntigravityProvider().fetchSnapshot()
         if agSnap.remainingPercent != nil {
             let geminiWindows = agSnap.windows.filter {
                 $0.label.localizedCaseInsensitiveContains("Gemini")
             }
-            let primary = geminiWindows.first ?? agSnap.windows.first
+            let limitingGemini = geminiWindows.min(by: { $0.remainingPercent < $1.remainingPercent })
+            let primary = limitingGemini ?? geminiWindows.first ?? agSnap.windows.first
             if let rem = primary?.remainingPercent ?? agSnap.remainingPercent {
                 return QuotaSnapshot(
                     agentID: .gemini,
                     remainingPercent: rem,
                     accountEmail: agSnap.accountEmail,
                     planTier: agSnap.planTier,
-                    primaryLabel: "Gemini",
+                    primaryLabel: primary?.label ?? "Gemini",
                     resetsAt: primary?.resetsAt ?? agSnap.resetsAt,
                     windows: geminiWindows.isEmpty ? agSnap.windows : geminiWindows,
                     subtitle: agSnap.subtitle,
                     isWorking: isRunning,
-                    sourceDescription: "本机 Google 账号同步"
+                    sourceDescription: "Google AI 账号同步"
                 )
             }
+        }
+
+        // 2. Try local ~/.gemini/oauth_creds.json if unexpired
+        if let cliSnap = await fetchFromGeminiCLIOAuth(isWorking: isRunning) {
+            return cliSnap
         }
 
         // 3. Fallback to generic web dashboard if user explicitly logged in via WebView

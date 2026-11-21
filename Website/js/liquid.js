@@ -33,7 +33,7 @@ float sdRoundedBox(vec2 p, vec2 b, float r) {
 }
 float waveH(float x, float t, float amp, float tilt, float ph, float fr) {
   float nx = (x - 0.5) * 2.0;
-  return nx * tilt * 0.085 + sin(nx * 3.14159 * fr + t + ph) * amp + sin(nx * 5.6 * fr - t * 1.28 + ph * 1.7) * (amp * 0.25);
+  return nx * tilt * 0.055 + sin(nx * 3.14159 * fr + t + ph) * amp + sin(nx * 5.6 * fr - t * 1.28 + ph * 1.7) * (amp * 0.25);
 }
 vec3 boostSat(vec3 c, float a) {
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -73,7 +73,7 @@ void main() {
   float rIcon = min(uBody.z, uBody.w) * 0.225;
   float distToWall = max(0.0, -sdRoundedBox(p, halfSpan, rIcon));
 
-  float amp = (0.008 + uWake * 0.014 + uWorking * 0.005 + uRipple * 0.026) * 1.5;
+  float amp = (0.0068 + uWake * 0.0115 + uWorking * 0.0038 + uRipple * 0.019) * 1.04;
   if (uLevel <= 0.02 || uLevel >= 0.98) amp *= 0.18;
   float hFront = uLevel + waveH(uv.x, uWaveT, amp, uTilt, uPhase, 1.06);
   float hBack = uLevel + 0.028 + waveH(uv.x, -uWaveT * 0.78, amp * 0.92, -uTilt * 0.45, uPhase + 2.40, 0.88);
@@ -474,20 +474,20 @@ void main() {
       this.hover = 0; this.tilt = 0; this.tiltVel = 0; this.ripple = 0.36;
       this.waveT = seed; this.bubbleT = seed * 1.3; this.target = 0;
     }
-    kick(v) { this.tiltVel += v; this.ripple = Math.max(this.ripple, 0.3); }
+    kick(v) { this.tiltVel += v * 0.68; this.ripple = Math.max(this.ripple, 0.22); }
     step(dt) {
-      const speed = 0.25 + 0.8 * 2.2;
+      const speed = 0.25 + 0.8 * 1.12;
       this.waveT += dt * 1.85 * speed;
       this.bubbleT += dt * 2.4 * speed;
       const k = Math.min(1, dt * (this.target > this.hover ? 16 : 7));
       this.hover += (this.target - this.hover) * k;
       if (Math.abs(this.target - this.hover) < 0.006) this.hover = this.target;
-      const accel = 26 * (0 - this.tilt) - 6.2 * this.tiltVel;
+      const accel = 20 * (0 - this.tilt) - 8.4 * this.tiltVel;
       this.tiltVel += accel * dt;
-      this.tilt = Math.max(-0.55, Math.min(0.55, this.tilt + this.tiltVel * dt));
-      this.ripple *= Math.pow(0.1, dt);
+      this.tilt = Math.max(-0.42, Math.min(0.42, this.tilt + this.tiltVel * dt));
+      this.ripple *= Math.pow(0.14, dt);
     }
-    get tiltScaled() { return this.tilt * (0.25 + 0.67 * 1.1); }
+    get tiltScaled() { return this.tilt * (0.25 + 0.67 * 0.58); }
   }
 
   global.AGLiquid = { LiquidRenderer, TileMotion, analyseIcon };

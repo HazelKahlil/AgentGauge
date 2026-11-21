@@ -22,6 +22,8 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var cachedBlockRules: WKContentRuleList?
     private var didCompileRules: Bool = false
+    private var cachedCookieDomains: [String]?
+    private var lastCookieFetch: Date = .distantPast
 
     private override init() {
         super.init()
@@ -58,6 +60,7 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.loginWindows.removeValue(forKey: agentID)
+                self?.invalidateCookieCache()
                 onClose()
             }
         }
@@ -68,11 +71,33 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    public func invalidateCookieCache() {
+        cachedCookieDomains = nil
+        lastCookieFetch = .distantPast
+    }
+
     public func hasCookies(matchingDomainSuffixes suffixes: [String]) async -> Bool {
-        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
-        return cookies.contains { cookie in
-            let dom = cookie.domain.lowercased()
-            return suffixes.contains { dom.hasSuffix($0.lowercased()) }
+        guard !suffixes.isEmpty else { return false }
+        let now = Date()
+        let domains: [String]
+        if let cached = cachedCookieDomains, now.timeIntervalSince(lastCookieFetch) < 30.0 {
+            domains = cached
+        } else {
+            let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+            domains = Array(Set(cookies.map {
+                $0.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            }))
+            cachedCookieDomains = domains
+            lastCookieFetch = Date()
+        }
+
+        let cleanSuffixes = suffixes.map {
+            $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        }
+        return domains.contains { dom in
+            cleanSuffixes.contains { suf in
+                dom == suf || dom.hasSuffix("." + suf)
+            }
         }
     }
 
@@ -230,6 +255,7 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
         timeoutTask = nil
         hiddenWebView?.navigationDelegate = nil
         hiddenWebView?.stopLoading()
+        hiddenWebView?.loadHTMLString("", baseURL: nil)
         hiddenWebView = nil
         pendingScript = nil
         let cont = pendingContinuation

@@ -30,6 +30,7 @@ private final class TooltipPresentationModel: ObservableObject {
     @Published var accentColor: NSColor = .systemBlue
     @Published var appIcon: NSImage?
     @Published var isVisibleOnScreen: Bool = false
+    @Published var cardAlignment: Alignment = .bottom
 }
 
 @MainActor
@@ -48,6 +49,7 @@ private final class TooltipDisplayLinkProxy: NSObject {
 @MainActor
 public final class HoverTooltipPanel {
     private let panel: NSPanel
+    private let containerView: NSView
     private let hostingView: NSHostingView<TooltipRootContainer>
     private let model = TooltipPresentationModel()
 
@@ -64,11 +66,14 @@ public final class HoverTooltipPanel {
     private var latestAnchorRect: NSRect = .zero
     private var latestOrientation: DockOrientation = .bottom
     private var hasAnchorPosition: Bool = false
+    private var hasAXConfirmedCurrentAgent: Bool = false
+    private var cachedDockMetrics: (tileSize: CGFloat, largeSize: CGFloat) = (58, 58)
+    private var lastDockMetricsFetch: CFTimeInterval = 0
 
     /// Logical anchor point of the visual card (excluding shadowInset):
-    /// - `.bottom`: (centerX, bottomY)
-    /// - `.left`:   (leftX, centerY)
-    /// - `.right`:  (rightX, centerY)
+    /// - `.bottom`: (centerX, bottomY) — bottomY is locked to one constant rail across the entire Dock
+    /// - `.left`:   (leftX, centerY)   — leftX is locked to one constant rail across the entire Dock
+    /// - `.right`:  (rightX, centerY)  — rightX is locked to one constant rail across the entire Dock
     private var currentAnchor: NSPoint = .zero
     private var targetAnchor: NSPoint = .zero
     private var velocity: NSPoint = .zero
@@ -80,9 +85,16 @@ public final class HoverTooltipPanel {
     public init() {
         let root = TooltipRootContainer(model: model, shadowInset: Self.shadowInset)
         let hosting = NSHostingView(rootView: root)
+        // Keep .intrinsicContentSize on hostingView so fittingSize/intrinsicContentSize ALWAYS measure the full card,
+        // while placing hostingView inside a plain containerView so AppKit NEVER auto-resizes NSPanel from top-left!
         hosting.sizingOptions = [.intrinsicContentSize]
         hosting.frame = NSRect(x: 0, y: 0, width: 320, height: 140)
-        hosting.autoresizingMask = [.width, .height]
+        hosting.autoresizingMask = []
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 140))
+        container.wantsLayer = false
+        container.autoresizesSubviews = false
+        container.addSubview(hosting)
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 140),
@@ -97,8 +109,9 @@ public final class HoverTooltipPanel {
         panel.ignoresMouseEvents = true
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .transient, .fullScreenAuxiliary]
-        panel.contentView = hosting
+        panel.contentView = container
 
+        self.containerView = container
         self.hostingView = hosting
         self.panel = panel
     }
@@ -109,7 +122,8 @@ public final class HoverTooltipPanel {
         orientation: DockOrientation,
         detailMode: TooltipDetailMode,
         showPercentageSign: Bool,
-        accentColor: NSColor
+        accentColor: NSColor,
+        isLiveAXRect: Bool = true
     ) {
         pendingHideWorkItem?.cancel()
         pendingHideWorkItem = nil
@@ -120,10 +134,17 @@ public final class HoverTooltipPanel {
         let wasMidHide = isHiding
         isHiding = false
 
+        let desiredAlignment: Alignment = switch orientation {
+        case .bottom: .bottom
+        case .left: .leading
+        case .right: .trailing
+        }
+
         let contentChanged = (model.snapshot != snapshot)
             || (model.detailMode != detailMode)
             || (model.showPercentageSign != showPercentageSign)
             || (model.accentColor.srgbHexString != accentColor.srgbHexString)
+            || (model.cardAlignment != desiredAlignment)
 
         if contentChanged {
             let icon = TooltipIconCache.icon(for: snapshot.agentID)
@@ -132,6 +153,7 @@ public final class HoverTooltipPanel {
             model.showPercentageSign = showPercentageSign
             model.accentColor = accentColor
             model.appIcon = icon
+            model.cardAlignment = desiredAlignment
             hostingView.invalidateIntrinsicContentSize()
             hostingView.layoutSubtreeIfNeeded()
         }
@@ -139,10 +161,11 @@ public final class HoverTooltipPanel {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         if !wasVisible || orientationChanged {
-            // Fresh appearance: lock dead-center directly above the hovered app, then spring-pop in
+            // Fresh appearance: lock dead-center on the constant Dock rail, then spring-pop in
             latestAnchorRect = anchorRect
             latestOrientation = orientation
             currentAgentID = snapshot.agentID
+            hasAXConfirmedCurrentAgent = isLiveAXRect
 
             let (panelSize, cardSize) = measurePanelAndCardSize()
             let nextTarget = computeTargetAnchor(anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
@@ -161,14 +184,14 @@ public final class HoverTooltipPanel {
             withAnimation(.spring(response: 0.24, dampingFraction: 0.80)) {
                 model.isVisibleOnScreen = true
             }
-            // Keep display link active briefly so async SwiftUI layout finalization stays centered
             ensureDisplayLinkRunning()
         } else if switchedAgent {
             // Switched to another app (sliding left/right or jumping across Dock):
-            // Update target ONCE to the new app's center, glide smoothly, then lock rock-solid.
+            // Update target ONCE along the constant horizontal rail, glide smoothly, then lock rock-solid.
             latestAnchorRect = anchorRect
             latestOrientation = orientation
             currentAgentID = snapshot.agentID
+            hasAXConfirmedCurrentAgent = isLiveAXRect
             animationGeneration += 1
             settleChecksRemaining = 10
 
@@ -198,7 +221,9 @@ public final class HoverTooltipPanel {
                 ensureDisplayLinkRunning()
             }
         } else {
-            // Staying on the SAME app: keep anchor position 100% locked (zero mouse/magnification wobble!)
+            // Staying on the SAME app:
+            // Allow at most ONE initial AX center lock if Frame 0 came from unmagnified cache;
+            // after that, anchor is 100% locked (zero wobble, zero vertical shift!).
             if wasMidHide || !model.isVisibleOnScreen {
                 animationGeneration += 1
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.84)) {
@@ -212,13 +237,24 @@ public final class HoverTooltipPanel {
                 panel.alphaValue = 1.0
             }
 
-            if contentChanged {
+            var needsUpdate = contentChanged
+            if !hasAXConfirmedCurrentAgent && isLiveAXRect {
+                hasAXConfirmedCurrentAgent = true
+                latestAnchorRect = anchorRect
+                needsUpdate = true
+            }
+
+            if needsUpdate {
                 let (panelSize, cardSize) = measurePanelAndCardSize()
                 targetAnchor = computeTargetAnchor(
                     anchorRect: latestAnchorRect,
                     orientation: latestOrientation,
                     cardSize: cardSize
                 )
+                if reduceMotion {
+                    currentAnchor = targetAnchor
+                    velocity = .zero
+                }
                 settleChecksRemaining = max(settleChecksRemaining, 6)
                 applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: latestOrientation)
                 ensureDisplayLinkRunning()
@@ -230,8 +266,10 @@ public final class HoverTooltipPanel {
         let fitting = hostingView.fittingSize
         let intrinsic = hostingView.intrinsicContentSize
         let pad = Self.shadowInset
-        let width = ceil(max(290 + pad * 2, max(fitting.width, intrinsic.width)))
-        let height = ceil(max(66 + pad * 2, max(fitting.height, intrinsic.height)))
+        let rawW = max(fitting.width, intrinsic.width.isFinite ? intrinsic.width : 0)
+        let rawH = max(fitting.height, intrinsic.height.isFinite ? intrinsic.height : 0)
+        let width = ceil(max(290 + pad * 2, rawW))
+        let height = ceil(max(66 + pad * 2, rawH))
         return (
             NSSize(width: width, height: height),
             NSSize(width: width - pad * 2, height: height - pad * 2)
@@ -245,19 +283,60 @@ public final class HoverTooltipPanel {
         return screen.frame.insetBy(dx: 10, dy: 10)
     }
 
+    private func currentDockMetrics() -> (tileSize: CGFloat, largeSize: CGFloat) {
+        let now = CACurrentMediaTime()
+        if now - lastDockMetricsFetch > 2.5 {
+            lastDockMetricsFetch = now
+            let defaults = UserDefaults(suiteName: "com.apple.dock")
+            let rawTile = CGFloat(defaults?.double(forKey: "tilesize") ?? 0)
+            let tileSize = rawTile >= 16 ? min(128, rawTile) : 58
+            let magEnabled = defaults?.bool(forKey: "magnification") ?? false
+            let rawLarge = CGFloat(defaults?.double(forKey: "largesize") ?? 0)
+            let largeSize = magEnabled ? min(160, max(tileSize, rawLarge)) : tileSize
+            cachedDockMetrics = (tileSize, largeSize)
+        }
+        return cachedDockMetrics
+    }
+
     private func computeTargetAnchor(
         anchorRect: NSRect,
         orientation: DockOrientation,
         cardSize: NSSize
     ) -> NSPoint {
+        let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchorRect) }) ?? NSScreen.main
+        let (tileSize, largeSize) = currentDockMetrics()
+        let magBoost = max(0, largeSize - tileSize)
+
         var pt: NSPoint
         switch orientation {
         case .bottom:
-            pt = NSPoint(x: anchorRect.midX, y: anchorRect.maxY + 58)
+            // Constant horizontal rail derived from screen + Dock metrics so EVERY app sits at the exact same height
+            let railY: CGFloat
+            if let screen {
+                let baseTopY = max(screen.visibleFrame.minY, screen.frame.minY + tileSize + 14)
+                railY = round(baseTopY + magBoost + 44)
+            } else {
+                railY = round(anchorRect.maxY + 58)
+            }
+            pt = NSPoint(x: anchorRect.midX, y: railY)
         case .left:
-            pt = NSPoint(x: anchorRect.maxX + 26, y: anchorRect.midY)
+            let railX: CGFloat
+            if let screen {
+                let baseRightX = max(screen.visibleFrame.minX, screen.frame.minX + tileSize + 14)
+                railX = round(baseRightX + magBoost + 22)
+            } else {
+                railX = round(anchorRect.maxX + 26)
+            }
+            pt = NSPoint(x: railX, y: anchorRect.midY)
         case .right:
-            pt = NSPoint(x: anchorRect.minX - 26, y: anchorRect.midY)
+            let railX: CGFloat
+            if let screen {
+                let baseLeftX = min(screen.visibleFrame.maxX, screen.frame.maxX - tileSize - 14)
+                railX = round(baseLeftX - magBoost - 22)
+            } else {
+                railX = round(anchorRect.minX - 26)
+            }
+            pt = NSPoint(x: railX, y: anchorRect.midY)
         }
         return clampAnchor(pt, anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
     }
@@ -321,8 +400,14 @@ public final class HoverTooltipPanel {
             || abs(panel.frame.origin.y - targetFrame.origin.y) > 0.25
 
         if sizeChanged {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            panel.setFrame(targetFrame, display: false)
+            containerView.frame = NSRect(origin: .zero, size: targetFrame.size)
             hostingView.frame = NSRect(origin: .zero, size: targetFrame.size)
-            panel.setFrame(targetFrame, display: true)
+            hostingView.layoutSubtreeIfNeeded()
+            panel.displayIfNeeded()
+            CATransaction.commit()
         } else if originChanged {
             panel.setFrameOrigin(targetFrame.origin)
         }
@@ -443,6 +528,7 @@ public final class HoverTooltipPanel {
             animationGeneration += 1
             currentAgentID = nil
             hasAnchorPosition = false
+            hasAXConfirmedCurrentAgent = false
             velocity = .zero
             isHiding = false
             pauseDisplayLink()
@@ -484,6 +570,7 @@ public final class HoverTooltipPanel {
                 self.isHiding = false
                 self.currentAgentID = nil
                 self.hasAnchorPosition = false
+                self.hasAXConfirmedCurrentAgent = false
                 self.velocity = .zero
                 self.pauseDisplayLink()
                 self.panel.orderOut(nil)
@@ -584,9 +671,8 @@ struct TooltipContentView: View {
                                 .contentTransition(.numericText())
                         }
 
-                        let cd = snapshot.isWorking ? "正在工作中" : snapshot.formattedCountdown()
-                        if cd != "—" {
-                            Text(snapshot.isWorking ? cd : "\(cd) 重置")
+                        if let statusLine = heroSubstatusString(for: snapshot) {
+                            Text(statusLine)
                                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                                 .foregroundStyle(snapshot.isWorking ? Color.green : Color.secondary)
                                 .lineLimit(1)
@@ -695,6 +781,9 @@ struct TooltipContentView: View {
     }
 
     private func heroValueString(for snap: QuotaSnapshot) -> String {
+        if let bal = snap.balanceDisplay {
+            return bal
+        }
         if let c = snap.creditsRemaining {
             if let tot = snap.creditsTotal, tot > 0 {
                 return "\(c) / \(tot)"
@@ -703,6 +792,25 @@ struct TooltipContentView: View {
         }
         guard let rem = snap.remainingPercent else { return "—" }
         return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
+    }
+
+    private func heroSubstatusString(for snap: QuotaSnapshot) -> String? {
+        let rawCD = snap.formattedCountdown()
+        let formattedCD: String? = {
+            guard rawCD != "—", !rawCD.isEmpty else { return nil }
+            if rawCD.contains("重置") || rawCD.contains("计费") || rawCD.contains("到期") || rawCD.contains("刷新") {
+                return rawCD
+            }
+            return "\(rawCD) 重置"
+        }()
+
+        if snap.isWorking {
+            if snap.windows.count <= 1, let cd = formattedCD {
+                return "工作中 · \(cd)"
+            }
+            return "正在工作中"
+        }
+        return formattedCD
     }
 
     private func headerIdentitySubtitle(for snap: QuotaSnapshot, badge: String?) -> String? {

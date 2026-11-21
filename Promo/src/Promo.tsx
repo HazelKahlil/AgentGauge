@@ -331,7 +331,7 @@ const Brand: React.FC = () => {
         <Icon name="agentgauge" size={236} style={{ filter: "drop-shadow(0 30px 60px rgba(20,30,60,0.52))" }} />
       </div>
       <div style={{ position: "absolute", top: 522, width: "100%", display: "flex", justifyContent: "center" }}>
-        <Eyebrow text="v1.1.0 · macOS 26 Tahoe · 50 Apps" delay={0.28} />
+        <Eyebrow text="v1.2.0 · macOS 26 Tahoe · 29 AI Vendors" delay={0.28} />
       </div>
       <div style={{ position: "absolute", top: 586, width: "100%", display: "flex", justifyContent: "center" }}>
         <Reveal text="AgentGauge" delay={0.45} size={116} weight={700} align="center" letterSpacing={-4} stagger={0.032} />
@@ -532,7 +532,7 @@ const HDShowcase: React.FC = () => {
         })}
 
         <div style={{ position: "absolute", left: 980, top: 214 }}>
-          <Eyebrow text="1024px Native Metal · 动态反相字" delay={0.05} />
+          <Eyebrow text="v1.2.0 Native Metal · 统一光学水波" delay={0.05} />
         </div>
         <div style={{ position: "absolute", left: 980, top: 750, display: "flex", alignItems: "center", gap: 14 }}>
           {HD_HEROES.map((h) => {
@@ -894,7 +894,7 @@ const Macro: React.FC = () => {
 
 /* =============================== Scene 6 · Styles grid =============================== */
 
-const STYLE_LABELS = ["同心 R 角", "左上扇圆", "左下扇圆", "正左半圆", "正右半圆", "正上半圆", "正下半圆", "左上同心 R 角", "同心正圆", "微晶描边字", "动态反相字", "低水位避让"];
+const STYLE_LABELS = ["截图顶栏时间", "动态反相字", "微晶描边字", "同心 R 角", "光圈扇叶扫描", "像素 LED 点阵", "双轨微仪表", "博朗圆弧指针", "底部 5 格晶块", "顶部灵动微岛", "顶部弧形光眉", "低水位避让"];
 
 const Styles: React.FC = () => {
   const { t, dur, frame, fps } = useTime();
@@ -906,8 +906,8 @@ const Styles: React.FC = () => {
     <AbsoluteFill style={{ opacity: fadeIO(t, dur, 0.3, 0.3) }}>
       <Wallpaper painting="twilight" dim={0.5} />
       <div style={{ position: "absolute", top: 104, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-        <Eyebrow text="Make It Yours" delay={0.05} />
-        <Reveal text="11 种几何样式 · 4 种色调 · 尺寸自由缩放" delay={0.12} size={58} weight={700} align="center" stagger={0.025} letterSpacing={-1} />
+        <Eyebrow text="Make It Yours · v1.2.0" delay={0.05} />
+        <Reveal text="11 种精选指示样式 · 全系共享光学水波" delay={0.12} size={58} weight={700} align="center" stagger={0.025} letterSpacing={-1} />
       </div>
       {STYLE_LABELS.map((label, i) => {
         const col = i % 6;
@@ -943,7 +943,7 @@ const Styles: React.FC = () => {
 
 type Callout = { box: [number, number, number, number]; title: string; sub: string; at: number };
 const CALLOUTS: Callout[] = [
-  { box: [280, 56, 406, 96], title: "订阅等级自动识别", sub: "AI Ultra · Pro Lite 5x · Max 20x · Premium", at: 1.0 },
+  { box: [280, 56, 406, 96], title: "订阅与余额自动识别", sub: "AI Ultra · Pro Lite 5x · Max 20x · API 余额", at: 1.0 },
   { box: [600, 52, 744, 128], title: "主额度与重置倒计时", sub: "什么时候恢复，一眼可知", at: 2.2 },
   { box: [50, 152, 744, 470], title: "多模型分项额度", sub: "每个模型独立进度，低于 30% 自动变色", at: 3.4 },
   { box: [50, 476, 236, 514], title: "积分与权益同步展示", sub: "Credits · 满额重置券 · 可用积分", at: 4.4 },
@@ -1031,10 +1031,10 @@ const POP_SIDEBAR = [
   { id: "antigravity", name: "Antigravity", val: "64%", accent: "#5479B2", paused: false, work: false },
   { id: "cursor", name: "Cursor", val: "68%", accent: "#7165AD", paused: false, work: false },
   { id: "workbuddy", name: "WorkBuddy", val: "3.2k", accent: "#498596", paused: false, work: false },
-  { id: "multica", name: "Multica", val: "100%", accent: "#7A67A6", paused: false, work: true },
+  { id: "deepseek", name: "DeepSeek", val: "¥29", accent: "#536DA8", paused: false, work: false },
   { id: "grokbot", name: "Grok Bot", val: "69%", accent: "#B37452", paused: false, work: false },
   { id: "gemini", name: "Gemini", val: "暂停", accent: "#597AB2", paused: true, work: false },
-  { id: "muse", name: "Muse", val: "暂停", accent: "#4E7CA8", paused: true, work: false },
+  { id: "claude", name: "Claude", val: "83%", accent: "#AD6E54", paused: false, work: false },
   { id: "codex", name: "Codex", val: "82%", accent: "#3E8C79", paused: false, work: true },
 ];
 
@@ -1460,7 +1460,7 @@ const MenuBar: React.FC = () => {
   );
 };
 
-/* =============================== Scene 9 · Settings (v1.1.0) =============================== */
+/* =============================== Scene 9 · Settings (v1.2.0) =============================== */
 
 const Settings: React.FC = () => {
   const { t, dur } = useTime();
@@ -1475,14 +1475,14 @@ const Settings: React.FC = () => {
       <Wallpaper painting="monet" dim={0.34} />
       <DesktopChrome plaque="Claude Monet · Water Lilies, c. 1915" />
       <div style={{ position: "absolute", left: 110, top: 360, width: 560 }}>
-        <Eyebrow text="AgentGauge v1.1.0 · Native macOS" delay={0.1} />
+        <Eyebrow text="AgentGauge v1.2.0 · Native macOS" delay={0.1} />
         <div style={{ height: 16 }} />
         <Reveal text="原生设置，" delay={0.2} size={76} weight={700} stagger={0.04} letterSpacing={-1.5} />
         <Reveal text="一切随心。" delay={0.5} size={76} weight={700} stagger={0.04} letterSpacing={-1.5} gradient />
         <div style={{ height: 26 }} />
-        <Reveal text="50 款应用自由勾选 · 悬停详情三档切换" delay={1.0} size={26} weight={500} color={C.dim} stagger={0.012} />
+        <Reveal text="29 家模型与套餐直连 · 11 种精选液态样式" delay={1.0} size={26} weight={500} color={C.dim} stagger={0.012} />
         <div style={{ height: 8 }} />
-        <Reveal text="矿物水色、同心 R 角样式、字号浓度实时预览" delay={1.3} size={26} weight={500} color={C.dim} stagger={0.012} />
+        <Reveal text="订阅配额、积分与 API 余额同步 · 字号浓度实时预览" delay={1.3} size={26} weight={500} color={C.dim} stagger={0.012} />
       </div>
       <Img
         src={staticFile("shots/settings_demo_0_436x528.png")}
@@ -1514,14 +1514,13 @@ const Settings: React.FC = () => {
   );
 };
 
-/* =============================== Scene 10 · Supported 50 Apps =============================== */
+/* =============================== Scene 10 · Supported 29 Authentic Vendors =============================== */
 
 const ALL_APPS = [
-  "codex", "antigravity", "cursor", "grokbot", "muse", "claude", "workbuddy", "multica", "hermes", "windsurf",
-  "trae", "kiro", "zed", "vscode", "warp", "qoder", "devin", "xcode", "intellij", "pycharm",
-  "webstorm", "androidstudio", "opencode", "gemini", "grok", "deepseek", "perplexity", "doubao", "kimi", "qwen",
-  "cherrystudio", "lmstudio", "chatcut", "manus", "kaze", "tabbit", "quark", "chatglm", "ollama", "raycast",
-  "jan", "lechat", "poe", "chatbox", "lobechat", "anythingllm", "nextchat", "openwebui", "gpt4all", "comfyui",
+  "codex", "antigravity", "claude", "cursor", "grokbot", "windsurf", "workbuddy", "trae", "kiro", "vscode",
+  "qoder", "zed", "warp", "devin", "intellij",
+  "pycharm", "webstorm", "gemini", "grok", "deepseek", "kimi", "chatglm", "qwen", "doubao", "minimax",
+  "perplexity", "lechat", "manus", "poe",
 ];
 
 const ROW_MASK = "linear-gradient(90deg, transparent 0%, black 14%, black 86%, transparent 100%)";
@@ -1542,11 +1541,11 @@ const AppsRow: React.FC<{ items: string[]; y: number; dir: 1 | -1; t: number; si
 
 const Apps: React.FC = () => {
   const { t, dur } = useTime();
-  const count = Math.round(interpolate(t, [0.2, 1.65], [0, 50], { ...clamp, easing: ease }));
+  const count = Math.round(interpolate(t, [0.2, 1.65], [0, 29], { ...clamp, easing: ease }));
   const size = 114;
   const step = size + 40;
-  const rowA = ALL_APPS.slice(0, 25);
-  const rowB = ALL_APPS.slice(25);
+  const rowA = ALL_APPS.slice(0, 15);
+  const rowB = ALL_APPS.slice(15);
   return (
     <AbsoluteFill style={{ opacity: fadeIO(t, dur, 0.3, 0.3) }}>
       <Wallpaper painting="fuji" dim={0.62} />
@@ -1570,15 +1569,15 @@ const Apps: React.FC = () => {
           {count}
         </div>
         <div style={{ height: 10 }} />
-        <Reveal text="款主流 AI 与编程智能体，一网打尽" delay={0.45} size={48} weight={700} align="center" stagger={0.025} />
+        <Reveal text="家自研大模型与 Coding Plan，原生直连" delay={0.45} size={48} weight={700} align="center" stagger={0.025} />
         <div style={{ height: 14 }} />
-        <Reveal text="Claude · Codex · Cursor · Antigravity · Gemini · Grok · Ollama · Raycast …" delay={0.9} size={26} weight={500} color={C.dim} align="center" stagger={0.008} letterSpacing={0.4} />
+        <Reveal text="Claude · Codex · Cursor · Antigravity · Windsurf · Copilot · DeepSeek · Kimi · GLM · Qwen …" delay={0.9} size={25} weight={500} color={C.dim} align="center" stagger={0.008} letterSpacing={0.3} />
       </AbsoluteFill>
     </AbsoluteFill>
   );
 };
 
-/* =============================== Scene 11 · Outro (v1.1.0 + usage.komorebi.date) =============================== */
+/* =============================== Scene 11 · Outro (v1.2.0 + usage.komorebi.date) =============================== */
 
 const Outro: React.FC = () => {
   const { t, dur } = useTime();
@@ -1599,7 +1598,7 @@ const Outro: React.FC = () => {
         <Reveal text="AI 额度，清澈如水。" delay={0.95} size={54} weight={650} align="center" gradient stagger={0.05} />
       </div>
 
-      {/* Official URL & v1.1.0 Download Pill */}
+      {/* Official URL & v1.2.0 Download Pill */}
       <div
         style={{
           position: "absolute",
@@ -1627,7 +1626,7 @@ const Outro: React.FC = () => {
             boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
           }}
         >
-          <span>Download v1.1.0</span>
+          <span>Download v1.2.0</span>
           <span style={{ width: 5, height: 5, borderRadius: 99, background: "rgba(20,20,19,0.35)" }} />
           <span style={{ fontWeight: 500, color: "#4a4945" }}>usage.komorebi.date</span>
         </div>

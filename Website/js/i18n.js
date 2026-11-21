@@ -2,7 +2,7 @@
 window.AG_I18N = {
   en: {
     "meta.title": "AgentGauge — Your AI quota, as clear as water",
-    "meta.desc": "AgentGauge turns every AI app in your Mac's Dock into a living liquid gauge. Hover to see remaining quota, plan and reset time for 50 AI apps and coding agents.",
+    "meta.desc": "AgentGauge turns every AI Coding Agent and Foundation Model app in your Mac's Dock into a living liquid gauge. Hover to see remaining quota, plan tier, API balance and reset time across 29 AI vendors.",
     "nav.features": "Features",
     "nav.lab": "Liquid Lab",
     "nav.styles": "Styles",
@@ -12,9 +12,9 @@ window.AG_I18N = {
     "nav.download": "Download",
     "lang.switch": "中文",
 
-    "hero.eyebrow": "<b>v1.1.0</b> for macOS 26 Tahoe · 50 apps supported",
+    "hero.eyebrow": "<b>v1.2.0</b> for macOS 26 Tahoe · 29 Coding Plans &amp; AI vendors",
     "hero.title": "Your AI quota,<br><em>as clear as water.</em>",
-    "hero.sub": "AgentGauge turns every AI app in your Dock into a living liquid gauge. Hover to see what’s left, your plan and when it resets — for Claude, Codex, Cursor, Gemini and 46 more.",
+    "hero.sub": "AgentGauge turns every AI tool in your Dock into a living liquid gauge. Hover to see what’s left, your plan tier, API balance and reset time — for Claude, Codex, Cursor, Antigravity, DeepSeek and 24 more.",
     "hero.cta": "Download for macOS",
     "hero.film": "Watch the film",
     "hero.filmLen": "62s",
@@ -27,7 +27,7 @@ window.AG_I18N = {
     "strip.label": "Reads quota from the tools you already pay for",
 
     "manifesto.text": "Stop opening five apps to find out you’re <span class=\"m-dim\">out of credits.</span> AgentGauge keeps every quota where your eyes already are — <span class=\"m-ink\">the Dock and the menu bar.</span>",
-    "manifesto.n1": "AI apps & coding agents",
+    "manifesto.n1": "Coding Plans & AI vendors",
     "manifesto.n2": "ms per frame on Metal",
     "manifesto.n3": "CPU when you look away",
 
@@ -56,28 +56,27 @@ window.AG_I18N = {
     "feat.dodge.t": "The number gets out of the way",
     "feat.dodge.d": "When water runs low, the badge glides to the top corner so it never hides the icon.",
     "feat.settings.t": "Native, and entirely yours",
-    "feat.settings.d": "Pick from 50 apps, three detail levels, water tint, badge shape, size and density — previewed live.",
+    "feat.settings.d": "Pick from 29 AI vendors, 11 curated optical-water styles, water tint, size and density — previewed live.",
     "feat.idle.t": "Zero cost at rest",
     "feat.idle.d": "Rendering runs only while you hover. Leave the Dock and AgentGauge goes still.",
     "feat.private.t": "Local by design",
     "feat.private.d": "Reads quota from your apps’ own sign-in state. No AgentGauge account, no cloud sync.",
 
     "styles.eyebrow": "Make it yours",
-    "styles.title": "11 shapes. 4 tones.<br><em>Any size you like.</em>",
-    "styles.desc": "Every badge is cut to the exact corner radius of the macOS icon it sits on.",
-    "styles.labels": ["Concentric R-corner", "Top-left quadrant", "Bottom-left quadrant", "Left semicircle", "Right semicircle", "Top semicircle", "Bottom semicircle", "Top-left R-corner", "Concentric circle", "Halo text", "Split text", "Low-water dodge"],
+    "styles.title": "11 curated styles. 4 tones.<br><em>Unified optical water.</em>",
+    "styles.desc": "From top-bar countdowns and dynamic polarity-split numerals to Braun arc needles and micro-HUDs — every badge swims over signature refracting liquid.",
+    "styles.labels": ["Top timer scrim", "Dynamic split", "Micro-halo text", "Concentric pill", "Aperture sweep", "Pixel LED matrix", "Dual-track HUD", "Braun arc needle", "5-cell prism bar", "Dynamic micro-island", "Top energy brow", "Low-water dodge"],
 
-    "film.eyebrow": "The film",
+    "film.eyebrow": "The film · v1.2.0",
     "film.title": "AgentGauge in <em>62 seconds.</em>",
     "film.desc": "Every frame was rendered by the app itself — real Metal tiles, real windows.",
 
-    "apps.eyebrow": "Compatibility",
-    "apps.title": "50 apps.<br><em>One gauge.</em>",
-    "apps.desc": "Coding agents, IDEs and AI assistants — detected automatically by their macOS bundle.",
+    "apps.eyebrow": "Authentic Quota Sources",
+    "apps.title": "29 AI vendors.<br><em>One gauge.</em>",
+    "apps.desc": "Official coding agents, AI IDEs, foundation-model subscriptions and API balance pools — zero local wrappers or fake 100% fillers.",
     "apps.all": "All",
     "apps.coding": "Coding agents & IDEs",
-    "apps.dev": "JetBrains & terminal",
-    "apps.ai": "AI assistants",
+    "apps.ai": "Foundation models & plans",
 
     "how.eyebrow": "Get started",
     "how.title": "Three steps. <em>Then forget about it.</em>",
@@ -91,7 +90,7 @@ window.AG_I18N = {
     "faq.eyebrow": "FAQ",
     "faq.title": "Questions, <em>answered.</em>",
     "faq.q1": "Which apps does AgentGauge support?",
-    "faq.a1": "50 today, including Claude, ChatGPT / Codex, Cursor, Antigravity, Gemini, Grok, Windsurf, Trae, Kiro, Zed, VS Code, Xcode, JetBrains IDEs, DeepSeek, Kimi, Qwen, Ollama, Raycast and more. The list keeps growing.",
+    "faq.a1": "29 authentic Coding-Plan and foundation-model vendors today: Claude, ChatGPT / Codex, Cursor, Antigravity, Grok Bot, Windsurf, VS Code (Copilot), WorkBuddy, Trae, Kiro, Qoder, Zed, Warp, Devin, JetBrains IDEs, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Perplexity, Le Chat, Manus and Poe — strictly real subscription quotas, credits and API balances.",
     "faq.q2": "Do I need to sign in again?",
     "faq.a2": "Usually not. AgentGauge reads the sign-in state your apps already keep on your Mac. A few services need a one-time web connection, and the app will tell you which.",
     "faq.q3": "Why does it ask for Accessibility permission?",
@@ -105,7 +104,7 @@ window.AG_I18N = {
 
     "cta.title": "Put your AI quota<br><em>in the Dock.</em>",
     "cta.sub": "Free your attention for the work that matters.",
-    "cta.btn": "Download for macOS · v1.1.0",
+    "cta.btn": "Download for macOS · v1.2.0",
     "cta.meta": "macOS 26 Tahoe or later",
 
     "foot.tag": "Your AI quota, as clear as water.",
@@ -119,7 +118,7 @@ window.AG_I18N = {
 
   zh: {
     "meta.title": "AgentGauge — AI 额度，清澈如水",
-    "meta.desc": "AgentGauge 把 Mac Dock 里的每个 AI 应用，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐与重置时间，已支持 50 款 AI 应用与编程智能体。",
+    "meta.desc": "AgentGauge 把 Mac Dock 里的每个 AI 编程智能体与大模型应用，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置时间，已支持 29 家主流模型与套餐厂商。",
     "nav.features": "功能",
     "nav.lab": "液态实验室",
     "nav.styles": "样式",
@@ -129,9 +128,9 @@ window.AG_I18N = {
     "nav.download": "下载",
     "lang.switch": "EN",
 
-    "hero.eyebrow": "<b>v1.1.0</b> 适配 macOS 26 Tahoe · 已支持 50 款应用",
+    "hero.eyebrow": "<b>v1.2.0</b> 适配 macOS 26 Tahoe · 29 家大模型与 Coding Plan",
     "hero.title": "AI 额度，<br><em>清澈如水。</em>",
-    "hero.sub": "AgentGauge 把 Dock 里的每个 AI 应用，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐与重置倒计时——Claude、Codex、Cursor、Gemini 等 50 款应用，一览无余。",
+    "hero.sub": "AgentGauge 把 Dock 里的每个 AI 工具，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置倒计时——Claude、Codex、Cursor、Antigravity、DeepSeek 等 29 家官方厂商，一览无余。",
     "hero.cta": "下载 macOS 版",
     "hero.film": "观看宣传片",
     "hero.filmLen": "62 秒",
@@ -144,7 +143,7 @@ window.AG_I18N = {
     "strip.label": "直接读取你已订阅的 AI 工具额度",
 
     "manifesto.text": "别再挨个打开应用，才发现<span class=\"m-dim\">额度早已见底。</span>AgentGauge 把所有额度，放在你目光本就停留的地方——<span class=\"m-ink\">Dock 与菜单栏。</span>",
-    "manifesto.n1": "款 AI 应用与编程智能体",
+    "manifesto.n1": "家自研大模型与套餐厂商",
     "manifesto.n2": "毫秒 · Metal 单帧渲染",
     "manifesto.n3": "移开视线即零占用",
 
@@ -173,28 +172,27 @@ window.AG_I18N = {
     "feat.dodge.t": "低水位，数字自动避让",
     "feat.dodge.d": "余量越少，徽标越会滑向顶部角落，永远不遮挡图标本身。",
     "feat.settings.t": "原生设置，一切随心",
-    "feat.settings.d": "50 款应用自由勾选，悬停详情三档切换，水色、样式、字号与浓度实时预览。",
+    "feat.settings.d": "29 款真实计费厂商自由勾选，11 种精选光学水波样式，水色、字号与浓度实时预览。",
     "feat.idle.t": "闲置时，零占用",
     "feat.idle.d": "只在悬停时渲染。离开 Dock，AgentGauge 便安静下来。",
     "feat.private.t": "本地优先",
     "feat.private.d": "直接读取各应用本机登录状态，无需 AgentGauge 账号，不做云端同步。",
 
     "styles.eyebrow": "个性定制",
-    "styles.title": "11 种样式，4 种色调，<br><em>大小随心。</em>",
-    "styles.desc": "每一枚徽标，都精确贴合所在 macOS 图标的圆角曲率。",
-    "styles.labels": ["同心 R 角", "左上扇圆", "左下扇圆", "正左半圆", "正右半圆", "正上半圆", "正下半圆", "左上同心 R 角", "同心正圆", "微晶描边字", "动态反相字", "低水位避让"],
+    "styles.title": "11 种精选样式，4 种色调，<br><em>统一光学水波。</em>",
+    "styles.desc": "从顶栏重置倒计时、动态极性反相字，到博朗圆弧指针与双轨微仪表——全系共享折射气泡水体。",
+    "styles.labels": ["截图顶栏时间", "动态反相字", "微晶描边字", "同心 R 角", "光圈扇叶扫描", "像素 LED 点阵", "双轨微仪表", "博朗圆弧指针", "底部 5 格晶块", "顶部灵动微岛", "顶部弧形光眉", "低水位避让"],
 
-    "film.eyebrow": "宣传片",
+    "film.eyebrow": "宣传片 · v1.2.0",
     "film.title": "<em>62 秒</em>，看懂 AgentGauge。",
     "film.desc": "每一帧都由应用自身渲染——真实的 Metal 图块，真实的系统窗口。",
 
-    "apps.eyebrow": "兼容性",
-    "apps.title": "50 款应用，<br><em>一枚仪表。</em>",
-    "apps.desc": "编程智能体、IDE 与 AI 助手——按 macOS 应用标识自动识别。",
+    "apps.eyebrow": "真实配额直连",
+    "apps.title": "29 家模型与套餐，<br><em>一枚仪表。</em>",
+    "apps.desc": "专注真实计费的编程智能体、AI IDE、自研大模型订阅与官方 API 余额池——剔除无配额本地壳。",
     "apps.all": "全部",
     "apps.coding": "编程智能体与 IDE",
-    "apps.dev": "JetBrains 与终端",
-    "apps.ai": "AI 桌面助手",
+    "apps.ai": "自研大模型与套餐",
 
     "how.eyebrow": "开始使用",
     "how.title": "三步上手，<em>然后忘掉它。</em>",
@@ -208,7 +206,7 @@ window.AG_I18N = {
     "faq.eyebrow": "常见问题",
     "faq.title": "你可能<em>想知道。</em>",
     "faq.q1": "AgentGauge 支持哪些应用？",
-    "faq.a1": "目前已支持 50 款，包括 Claude、ChatGPT / Codex、Cursor、Antigravity、Gemini、Grok、Windsurf、Trae、Kiro、Zed、VS Code、Xcode、JetBrains 全家桶、DeepSeek、Kimi、通义千问、Ollama、Raycast 等，并持续增加中。",
+    "faq.a1": "严格聚焦拥有真实订阅配额、Coding Plan 积分或官方 API 余额池的 29 家厂商：包括 Claude、ChatGPT / Codex、Cursor、Antigravity、Grok Bot、Windsurf、VS Code (Copilot)、WorkBuddy、Trae、Kiro、Qoder、Zed、Warp、Devin、JetBrains 全家桶、Gemini、Grok、DeepSeek、Kimi、智谱 GLM、通义千问 Qwen、豆包、MiniMax、Perplexity、Le Chat、Manus 与 Poe。",
     "faq.q2": "需要重新登录账号吗？",
     "faq.a2": "通常不需要。AgentGauge 读取各应用在本机已保存的登录状态；少数服务需要一次性网页连接，应用内会明确提示。",
     "faq.q3": "为什么需要辅助功能权限？",
@@ -222,7 +220,7 @@ window.AG_I18N = {
 
     "cta.title": "把 AI 额度，<br><em>装进你的 Dock。</em>",
     "cta.sub": "把注意力，留给真正重要的工作。",
-    "cta.btn": "下载 macOS 版 · v1.1.0",
+    "cta.btn": "下载 macOS 版 · v1.2.0",
     "cta.meta": "需要 macOS 26 Tahoe 或更新版本",
 
     "foot.tag": "AI 额度，清澈如水。",

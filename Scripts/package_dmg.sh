@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_PATH="/Applications/AgentGauge.app"
 OUT_DIR="${ROOT_DIR}/Website/downloads"
-DMG_NAME="AgentGauge-v1.1.0-macOS.dmg"
+DMG_NAME="AgentGauge-v1.2.0-macOS.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
-VOL_NAME="AgentGauge v1.1.0"
+VOL_NAME="AgentGauge v1.2.0"
 
 if [ ! -d "${APP_PATH}" ]; then
   echo "Error: ${APP_PATH} not found. Run Scripts/build_app.sh first." >&2
@@ -29,7 +29,8 @@ cp -R "${APP_PATH}" "${STAGE_DIR}/AgentGauge.app"
 ln -s /Applications "${STAGE_DIR}/Applications"
 
 mkdir -p "${OUT_DIR}"
-rm -f "${DMG_PATH}"
+hdiutil detach "/Volumes/${VOL_NAME}" -force >/dev/null 2>&1 || true
+rm -f "${DMG_PATH}" "${OUT_DIR}/AgentGauge-v1.1.0-macOS.dmg"
 
 hdiutil create \
   -volname "${VOL_NAME}" \

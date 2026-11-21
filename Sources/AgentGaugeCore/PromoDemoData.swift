@@ -90,16 +90,6 @@ public enum PromoDemoData {
                 resetsAt: t(10, 11, 0),
                 sourceDescription: "CodeBuddy 积分"
             ),
-            .multica: QuotaSnapshot(
-                agentID: .multica,
-                remainingPercent: 100,
-                planTier: "本地应用",
-                resetText: "运行中",
-                windows: [QuotaWindow(label: "本地运行状态（无独立配额）", remainingPercent: 100, resetText: "在线", isPrimary: true)],
-                subtitle: "本地编排 / 工具客户端（不设百分比限额）",
-                isWorking: true,
-                sourceDescription: "Multica 本地状态"
-            ),
             .gemini: QuotaSnapshot(
                 agentID: .gemini,
                 remainingPercent: 77,
@@ -109,12 +99,16 @@ public enum PromoDemoData {
                 windows: [QuotaWindow(label: "Gemini App 每日额度", remainingPercent: 77, resetsAt: t(0, 6, 10), isPrimary: true)],
                 sourceDescription: "Gemini 本地账号"
             ),
-            .muse: QuotaSnapshot(
-                agentID: .muse,
-                remainingPercent: 91,
-                planTier: "Free",
-                resetsAt: t(0, 9, 0),
-                sourceDescription: "Meta AI"
+            .deepseek: QuotaSnapshot(
+                agentID: .deepseek,
+                remainingPercent: 48,
+                balanceDisplay: "¥28.50",
+                dockBalanceShort: "¥29",
+                planTier: "DeepSeek API",
+                resetText: "按量计费",
+                windows: [QuotaWindow(label: "DeepSeek API 可用余额", remainingPercent: 48, resetText: "¥28.50", isPrimary: true)],
+                subtitle: "按量计费 · 可用余额 ¥28.50",
+                sourceDescription: "DeepSeek Balance API"
             )
         ]
     }

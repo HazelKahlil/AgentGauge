@@ -378,6 +378,19 @@ public struct ClaudeProvider: UsageProvider {
                 windows.append(QuotaWindow(label: label, remainingPercent: rem, resetsAt: resetDate, isPrimary: isPrim))
             }
             guard let primary = windows.first else { return nil }
+
+            var subtitle: String?
+            if let extra = root["extra_usage"] as? [String: Any],
+               (extra["is_enabled"] as? Bool) == true {
+                let usedRaw = (extra["used_credits"] as? NSNumber)?.doubleValue ?? 0
+                let limitRaw = (extra["monthly_limit"] as? NSNumber)?.doubleValue ?? 0
+                // Anthropic returns credits in cents when >= 100 on standard $ limits, or direct dollars
+                if limitRaw > 0 {
+                    let divisor = (limitRaw >= 500 && limitRaw.truncatingRemainder(dividingBy: 100) == 0) ? 100.0 : 1.0
+                    subtitle = String(format: "额外用量 $%.2f / $%.0f", usedRaw / divisor, limitRaw / divisor)
+                }
+            }
+
             return QuotaSnapshot(
                 agentID: .claude,
                 remainingPercent: primary.remainingPercent,
@@ -386,6 +399,7 @@ public struct ClaudeProvider: UsageProvider {
                 primaryLabel: "Claude",
                 resetsAt: primary.resetsAt,
                 windows: windows,
+                subtitle: subtitle,
                 isWorking: isWorking,
                 sourceDescription: "Claude 本地凭证"
             )
@@ -398,7 +412,9 @@ public struct ClaudeProvider: UsageProvider {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let paths = [
             "\(home)/.claude/history.jsonl",
-            "\(home)/.claude/debug"
+            "\(home)/.claude/debug",
+            "\(home)/.claude/projects",
+            "\(home)/Library/Application Support/Claude/IndexedDB"
         ]
         let now = Date()
         for path in paths {

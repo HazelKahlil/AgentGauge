@@ -97,8 +97,8 @@ enum PromoExport {
     ) {
         ensureDir(dir)
         let dt: CGFloat = 1.0 / 30.0
-        let speed: CGFloat = 0.25 + 0.80 * 2.2
-        let tiltScale: CGFloat = 0.25 + 0.67 * 1.1
+        let speed: CGFloat = 0.25 + 0.80 * 1.12
+        let tiltScale: CGFloat = 0.25 + 0.67 * 0.58
         var st = TileState()
         st.hover = startHover
         st.tiltVel = initialTiltVel
@@ -110,10 +110,10 @@ enum PromoExport {
             st.bubbleTime += dt * 2.4 * speed
             st.hover += (1.0 - st.hover) * min(1.0, dt * 16.0)
             if 1.0 - st.hover < 0.006 { st.hover = 1.0 }
-            let accel = 26.0 * (0 - st.tilt) - 6.2 * st.tiltVel
+            let accel = 20.0 * (0 - st.tilt) - 8.4 * st.tiltVel
             st.tiltVel += accel * dt
-            st.tilt = max(-0.55, min(0.55, st.tilt + st.tiltVel * dt))
-            st.ripple *= pow(0.10, dt)
+            st.tilt = max(-0.42, min(0.42, st.tilt + st.tiltVel * dt))
+            st.ripple *= pow(0.14, dt)
             if let kick = impulses[f] {
                 st.tiltVel += kick
                 st.ripple = max(st.ripple, 0.30)
@@ -252,26 +252,27 @@ enum PromoExport {
 
         // Style showcase grid (12 cells)
         let cells: [(DockBadgeStyle, NumberColorMode, AgentID, Double)] = [
-            (.concentricAutoDodge, .smartInvert, .antigravity, 72),
-            (.cornerQuarterTopLeft, .smokeGray, .cursor, 64),
-            (.cornerQuarterBottomLeft, .smokeGray, .codex, 81),
-            (.semiLeft, .obsidianBlack, .grokbot, 58),
-            (.semiRight, .smokeGray, .claude, 77),
-            (.semiTop, .smartInvert, .workbuddy, 66),
-            (.semiBottom, .obsidianBlack, .antigravity, 70),
-            (.concentricTopLeft, .smartInvert, .cursor, 35),
-            (.concentricCircle, .smokeGray, .codex, 88),
-            (.haloText, .adaptiveInk, .grokbot, 61),
+            (.refTopTimerScrim, .smartInvert, .codex, 37),
             (.pureSplitText, .smartInvert, .claude, 54),
-            (.concentricAutoDodge, .adaptiveInk, .antigravity, 24)
+            (.haloText, .adaptiveInk, .grokbot, 61),
+            (.concentricAutoDodge, .smartInvert, .antigravity, 72),
+            (.apertureSweep, .smartInvert, .codex, 37),
+            (.retroLEDMatrix, .obsidianBlack, .claude, 42),
+            (.dualTrackHUD, .smartInvert, .cursor, 57),
+            (.braunAnalogNeedle, .obsidianBlack, .grokbot, 58),
+            (.bottomPrismCells, .smartInvert, .cursor, 64),
+            (.topDynamicIsland, .smartInvert, .claude, 77),
+            (.topEnergyBrow, .smartInvert, .antigravity, 70),
+            (.concentricAutoDodge, .adaptiveInk, .antigravity, 22)
         ]
         for (i, cell) in cells.enumerated() {
             guard let url = cell.2.installedAppURL else { continue }
+            let demoWin = [QuotaWindow(label: "5h 限额", remainingPercent: cell.3, resetText: "19h 0m", isPrimary: true)]
             renderSequence(renderer: r320, agent: cell.2, appURL: url, frames: 150,
                            dir: String(format: "%@/seq/style_%02d", outDir, i),
-                           initialTiltVel: (i % 2 == 0 ? 0.5 : -0.5), style: cell.0, tone: cell.1,
+                           initialTiltVel: (i % 2 == 0 ? 0.42 : -0.42), style: cell.0, tone: cell.1,
                            startHover: 0.0, seed: CGFloat(i) * 0.9) { _ in
-                QuotaSnapshot(agentID: cell.2, remainingPercent: cell.3, sourceDescription: "promo")
+                QuotaSnapshot(agentID: cell.2, remainingPercent: cell.3, resetText: "19h 0m", windows: demoWin, sourceDescription: "promo")
             }
         }
         print("PROMO style grid done", String(format: "%.1fs", Date().timeIntervalSince(t0)))
