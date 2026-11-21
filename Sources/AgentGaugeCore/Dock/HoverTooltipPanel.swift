@@ -33,6 +33,19 @@ private final class TooltipPresentationModel: ObservableObject {
 }
 
 @MainActor
+private final class TooltipDisplayLinkProxy: NSObject {
+    weak var owner: HoverTooltipPanel?
+
+    init(owner: HoverTooltipPanel) {
+        self.owner = owner
+    }
+
+    @objc func onFrame(_ link: CADisplayLink) {
+        owner?.handleDisplayLinkTick(link)
+    }
+}
+
+@MainActor
 public final class HoverTooltipPanel {
     private let panel: NSPanel
     private let hostingView: NSHostingView<TooltipRootContainer>
@@ -42,6 +55,24 @@ public final class HoverTooltipPanel {
     private var pendingHideWorkItem: DispatchWorkItem?
     private var animationGeneration: Int = 0
     private var isHiding: Bool = false
+
+    // 120Hz critically-damped spring state (never cancelled by async SwiftUI layout resizes)
+    private var displayLink: CADisplayLink?
+    private var displayLinkProxy: TooltipDisplayLinkProxy?
+    private var lastMotionTimestamp: CFTimeInterval = 0
+
+    private var latestAnchorRect: NSRect = .zero
+    private var latestOrientation: DockOrientation = .bottom
+    private var hasAnchorPosition: Bool = false
+
+    /// Logical anchor point of the visual card (excluding shadowInset):
+    /// - `.bottom`: (centerX, bottomY)
+    /// - `.left`:   (leftX, centerY)
+    /// - `.right`:  (rightX, centerY)
+    private var currentAnchor: NSPoint = .zero
+    private var targetAnchor: NSPoint = .zero
+    private var velocity: NSPoint = .zero
+    private var settleChecksRemaining: Int = 0
 
     /// Transparent outer margin inside NSPanel so native Liquid Glass shadow & spring bloom never clip at window edges.
     private static let shadowInset: CGFloat = 16
@@ -83,8 +114,9 @@ public final class HoverTooltipPanel {
         pendingHideWorkItem?.cancel()
         pendingHideWorkItem = nil
 
-        let wasVisible = panel.isVisible && panel.alphaValue > 0.12 && currentAgentID != nil
+        let wasVisible = panel.isVisible && panel.alphaValue > 0.08 && currentAgentID != nil && hasAnchorPosition
         let switchedAgent = wasVisible && currentAgentID != snapshot.agentID
+        let orientationChanged = wasVisible && latestOrientation != orientation
         let wasMidHide = isHiding
         isHiding = false
 
@@ -104,102 +136,253 @@ public final class HoverTooltipPanel {
             hostingView.layoutSubtreeIfNeeded()
         }
 
+        latestAnchorRect = anchorRect
+        latestOrientation = orientation
+        currentAgentID = snapshot.agentID
+
+        let (panelSize, cardSize) = measurePanelAndCardSize()
+        let nextTarget = computeTargetAnchor(anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
+        targetAnchor = nextTarget
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+        if !wasVisible || orientationChanged {
+            // Fresh appearance: snap dead-center over the hovered app immediately, then spring-pop in
+            animationGeneration += 1
+            currentAnchor = nextTarget
+            velocity = .zero
+            hasAnchorPosition = true
+            settleChecksRemaining = 6
+            model.isVisibleOnScreen = false
+
+            applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+            panel.alphaValue = 1.0
+            panel.orderFrontRegardless()
+
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.80)) {
+                model.isVisibleOnScreen = true
+            }
+            // Keep display link active briefly so async SwiftUI layout finalization stays centered
+            ensureDisplayLinkRunning()
+        } else {
+            // Already visible (sliding across apps, jumping horizontally, or tracking live Dock magnification):
+            // Continuously glide from currentAnchor -> targetAnchor without ever cancelling on resize!
+            if wasMidHide || !model.isVisibleOnScreen {
+                animationGeneration += 1
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.84)) {
+                    model.isVisibleOnScreen = true
+                }
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.12
+                    panel.animator().alphaValue = 1.0
+                }
+            } else if panel.alphaValue < 0.99 {
+                panel.alphaValue = 1.0
+            }
+
+            if switchedAgent {
+                animationGeneration += 1
+                settleChecksRemaining = 10
+            } else if contentChanged {
+                settleChecksRemaining = max(settleChecksRemaining, 6)
+            }
+
+            if reduceMotion {
+                currentAnchor = nextTarget
+                velocity = .zero
+                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+                ensureDisplayLinkRunning()
+            } else {
+                // Immediately apply updated size/clamping around current smoothly gliding anchor and drive 120Hz spring
+                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+                ensureDisplayLinkRunning()
+            }
+        }
+    }
+
+    private func measurePanelAndCardSize() -> (panelSize: NSSize, cardSize: NSSize) {
         let fitting = hostingView.fittingSize
         let intrinsic = hostingView.intrinsicContentSize
         let pad = Self.shadowInset
         let width = ceil(max(290 + pad * 2, max(fitting.width, intrinsic.width)))
         let height = ceil(max(66 + pad * 2, max(fitting.height, intrinsic.height)))
+        return (
+            NSSize(width: width, height: height),
+            NSSize(width: width - pad * 2, height: height - pad * 2)
+        )
+    }
 
-        // Visual card size (excluding transparent shadow inset)
-        let cardW = width - pad * 2
-        let cardH = height - pad * 2
+    private func screenVisibleBounds(for anchorRect: NSRect) -> NSRect? {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchorRect) }) ?? NSScreen.main else {
+            return nil
+        }
+        return screen.frame.insetBy(dx: 10, dy: 10)
+    }
 
-        var cardOrigin: NSPoint
+    private func computeTargetAnchor(
+        anchorRect: NSRect,
+        orientation: DockOrientation,
+        cardSize: NSSize
+    ) -> NSPoint {
+        var pt: NSPoint
         switch orientation {
         case .bottom:
-            cardOrigin = NSPoint(x: round(anchorRect.midX - cardW / 2.0), y: round(anchorRect.maxY + 58))
+            pt = NSPoint(x: anchorRect.midX, y: anchorRect.maxY + 58)
         case .left:
-            cardOrigin = NSPoint(x: round(anchorRect.maxX + 26), y: round(anchorRect.midY - cardH / 2.0))
+            pt = NSPoint(x: anchorRect.maxX + 26, y: anchorRect.midY)
         case .right:
-            cardOrigin = NSPoint(x: round(anchorRect.minX - cardW - 26), y: round(anchorRect.midY - cardH / 2.0))
+            pt = NSPoint(x: anchorRect.minX - 26, y: anchorRect.midY)
         }
+        return clampAnchor(pt, anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
+    }
 
-        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchorRect) }) ?? NSScreen.main {
-            let visible = screen.frame.insetBy(dx: 10, dy: 10)
-            cardOrigin.x = max(visible.minX, min(visible.maxX - cardW, cardOrigin.x))
-            cardOrigin.y = max(visible.minY, min(visible.maxY - cardH, cardOrigin.y))
+    private func clampAnchor(
+        _ pt: NSPoint,
+        anchorRect: NSRect,
+        orientation: DockOrientation,
+        cardSize: NSSize
+    ) -> NSPoint {
+        guard let visible = screenVisibleBounds(for: anchorRect) else { return pt }
+        var out = pt
+        switch orientation {
+        case .bottom:
+            let minX = visible.minX + cardSize.width / 2.0
+            let maxX = visible.maxX - cardSize.width / 2.0
+            out.x = minX <= maxX ? max(minX, min(maxX, out.x)) : visible.midX
+            out.y = max(visible.minY, min(visible.maxY - cardSize.height, out.y))
+        case .left:
+            out.x = max(visible.minX, min(visible.maxX - cardSize.width, out.x))
+            let minY = visible.minY + cardSize.height / 2.0
+            let maxY = visible.maxY - cardSize.height / 2.0
+            out.y = minY <= maxY ? max(minY, min(maxY, out.y)) : visible.midY
+        case .right:
+            out.x = max(visible.minX + cardSize.width, min(visible.maxX, out.x))
+            let minY = visible.minY + cardSize.height / 2.0
+            let maxY = visible.maxY - cardSize.height / 2.0
+            out.y = minY <= maxY ? max(minY, min(maxY, out.y)) : visible.midY
+        }
+        return out
+    }
+
+    private func applyPanelFrame(
+        anchor: NSPoint,
+        panelSize: NSSize,
+        cardSize: NSSize,
+        orientation: DockOrientation
+    ) {
+        let pad = Self.shadowInset
+        let clamped = clampAnchor(anchor, anchorRect: latestAnchorRect, orientation: orientation, cardSize: cardSize)
+        let cardOrigin: NSPoint
+        switch orientation {
+        case .bottom:
+            cardOrigin = NSPoint(x: clamped.x - cardSize.width / 2.0, y: clamped.y)
+        case .left:
+            cardOrigin = NSPoint(x: clamped.x, y: clamped.y - cardSize.height / 2.0)
+        case .right:
+            cardOrigin = NSPoint(x: clamped.x - cardSize.width, y: clamped.y - cardSize.height / 2.0)
         }
 
         let targetFrame = NSRect(
-            x: cardOrigin.x - pad,
-            y: cardOrigin.y - pad,
-            width: width,
-            height: height
+            x: round(cardOrigin.x - pad),
+            y: round(cardOrigin.y - pad),
+            width: panelSize.width,
+            height: panelSize.height
         )
 
-        if !wasVisible {
-            animationGeneration += 1
-            currentAgentID = snapshot.agentID
-            model.isVisibleOnScreen = false
+        let sizeChanged = abs(panel.frame.width - targetFrame.width) > 0.5
+            || abs(panel.frame.height - targetFrame.height) > 0.5
+        let originChanged = abs(panel.frame.origin.x - targetFrame.origin.x) > 0.25
+            || abs(panel.frame.origin.y - targetFrame.origin.y) > 0.25
+
+        if sizeChanged {
             hostingView.frame = NSRect(origin: .zero, size: targetFrame.size)
             panel.setFrame(targetFrame, display: true)
-            panel.alphaValue = 1.0
-            panel.orderFrontRegardless()
+        } else if originChanged {
+            panel.setFrameOrigin(targetFrame.origin)
+        }
+    }
 
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.80)) {
-                model.isVisibleOnScreen = true
-            }
-        } else if switchedAgent {
-            // 120Hz zero-reallocation glide: size backing buffer once around current center, then GPU-translate origin!
-            animationGeneration += 1
-            currentAgentID = snapshot.agentID
-            let startOrigin: NSPoint
-            switch orientation {
-            case .bottom:
-                startOrigin = NSPoint(
-                    x: round(panel.frame.midX - targetFrame.width / 2.0),
-                    y: targetFrame.origin.y
-                )
-            case .left, .right:
-                startOrigin = NSPoint(
-                    x: targetFrame.origin.x,
-                    y: round(panel.frame.midY - targetFrame.height / 2.0)
-                )
-            }
-            hostingView.frame = NSRect(origin: .zero, size: targetFrame.size)
-            panel.setFrame(NSRect(origin: startOrigin, size: targetFrame.size), display: true)
+    private func ensureDisplayLinkRunning() {
+        if displayLink == nil {
+            let proxy = TooltipDisplayLinkProxy(owner: self)
+            let link = panel.displayLink(target: proxy, selector: #selector(TooltipDisplayLinkProxy.onFrame(_:)))
+            link.add(to: .main, forMode: .common)
+            self.displayLinkProxy = proxy
+            self.displayLink = link
+        }
+        if displayLink?.isPaused == true {
+            lastMotionTimestamp = CACurrentMediaTime()
+            displayLink?.isPaused = false
+        }
+    }
 
-            if !model.isVisibleOnScreen || wasMidHide {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
-                    model.isVisibleOnScreen = true
-                }
-            }
+    private func pauseDisplayLink() {
+        displayLink?.isPaused = true
+        lastMotionTimestamp = 0
+    }
 
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.20
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.20, 0.92, 0.24, 1.0)
-                panel.animator().setFrameOrigin(targetFrame.origin)
-                panel.animator().alphaValue = 1.0
-            }
+    fileprivate func handleDisplayLinkTick(_ link: CADisplayLink) {
+        guard panel.isVisible, hasAnchorPosition else {
+            pauseDisplayLink()
+            return
+        }
+
+        let now = link.timestamp > 0 ? link.timestamp : CACurrentMediaTime()
+        let rawDt = lastMotionTimestamp > 0 ? (now - lastMotionTimestamp) : (1.0 / 60.0)
+        lastMotionTimestamp = now
+        let dt = CGFloat(min(0.04, max(0.004, rawDt)))
+
+        // Re-measure SwiftUI card every frame so async width/height transitions stay perfectly centered
+        let (panelSize, cardSize) = measurePanelAndCardSize()
+        let freshTarget = computeTargetAnchor(
+            anchorRect: latestAnchorRect,
+            orientation: latestOrientation,
+            cardSize: cardSize
+        )
+        targetAnchor = freshTarget
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            currentAnchor = freshTarget
+            velocity = .zero
         } else {
-            if wasMidHide || !model.isVisibleOnScreen {
-                animationGeneration += 1
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
-                    model.isVisibleOnScreen = true
-                }
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.14
-                    panel.animator().alphaValue = 1.0
-                }
-            }
-            if abs(panel.frame.width - targetFrame.width) > 1.0 ||
-               abs(panel.frame.height - targetFrame.height) > 1.0 {
-                let lockedOrigin = NSPoint(
-                    x: round(panel.frame.midX - targetFrame.width / 2.0),
-                    y: round(panel.frame.minY)
-                )
-                hostingView.frame = NSRect(origin: .zero, size: targetFrame.size)
-                panel.setFrame(NSRect(origin: lockedOrigin, size: targetFrame.size), display: true)
+            // Critically-damped spring (zeta = 1.0, omega = 26 rad/s -> ~0.20s silky glide matching website)
+            let omega: CGFloat = 26.0
+            let omegaSq = omega * omega
+            let twoOmega = 2.0 * omega
+
+            let dx = targetAnchor.x - currentAnchor.x
+            let dy = targetAnchor.y - currentAnchor.y
+            let ax = omegaSq * dx - twoOmega * velocity.x
+            let ay = omegaSq * dy - twoOmega * velocity.y
+
+            velocity.x += ax * dt
+            velocity.y += ay * dt
+            currentAnchor.x += velocity.x * dt
+            currentAnchor.y += velocity.y * dt
+        }
+
+        let remainingX = abs(targetAnchor.x - currentAnchor.x)
+        let remainingY = abs(targetAnchor.y - currentAnchor.y)
+        let speed = hypot(velocity.x, velocity.y)
+
+        let settled = remainingX < 0.35 && remainingY < 0.35 && speed < 2.0
+        if settled {
+            currentAnchor = targetAnchor
+            velocity = .zero
+        }
+
+        applyPanelFrame(
+            anchor: currentAnchor,
+            panelSize: panelSize,
+            cardSize: cardSize,
+            orientation: latestOrientation
+        )
+
+        if settled {
+            if settleChecksRemaining > 0 {
+                settleChecksRemaining -= 1
+            } else {
+                pauseDisplayLink()
             }
         }
     }
@@ -233,7 +416,10 @@ public final class HoverTooltipPanel {
         if immediate {
             animationGeneration += 1
             currentAgentID = nil
+            hasAnchorPosition = false
+            velocity = .zero
             isHiding = false
+            pauseDisplayLink()
             model.isVisibleOnScreen = false
             if panel.isVisible {
                 panel.orderOut(nil)
@@ -271,6 +457,9 @@ public final class HoverTooltipPanel {
                 guard let self, self.animationGeneration == gen else { return }
                 self.isHiding = false
                 self.currentAgentID = nil
+                self.hasAnchorPosition = false
+                self.velocity = .zero
+                self.pauseDisplayLink()
                 self.panel.orderOut(nil)
             }
         })

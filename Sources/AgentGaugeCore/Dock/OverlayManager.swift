@@ -40,12 +40,14 @@ public final class OverlayManager {
     private var bubbleTime: CGFloat = 0
     private var lastCursorX: CGFloat = 0
 
-    // Instant 0ms cached Dock geometry + non-blocking background AX verification
+    // Instant 0ms cached Dock geometry + authoritative ~30Hz off-main-thread AX verification
     private var cachedDockTiles: [CachedDockTile] = []
     private var isTileListRefreshInFlight: Bool = false
     private var lastTileListRefreshDate: Date = .distantPast
     private var isAXHitInFlight: Bool = false
     private var lastAXHitDate: Date = .distantPast
+    private var latestAXMatch: DockTileMatch?
+    private var latestAXVerifyDate: Date = .distantPast
     private var hasOpenDockMenu: Bool = false
 
     private var cachedDockPID: pid_t = 0
@@ -197,6 +199,7 @@ public final class OverlayManager {
     }
 
     public func hideAll() {
+        latestAXMatch = nil
         tooltipPanel.hide(immediate: true)
         for id in AgentID.allCases {
             motionStates[id]?.isHovered = false
@@ -227,9 +230,10 @@ public final class OverlayManager {
         let mouseNearDock = isCursorNearAnyDockEdge(orientation: orientation)
 
         if mouseNearDock {
-            // 1. INSTANT (0ms!) in-memory rect hit-test against cached Dock icon geometry
-            if !hasOpenDockMenu, let instantMatch = instantCachedHitTest() {
-                applyHitResult(match: instantMatch, hasOpenMenu: false, orientation: orientation, dt: dt)
+            // 1. Prefer fresh authoritative AX magnified match when cursor is still inside it;
+            //    otherwise fall back to 0ms nearest-center cached Dock hit-test for instant switch response.
+            if !hasOpenDockMenu, let liveMatch = resolveImmediateMatch(now: now, orientation: orientation) {
+                applyHitResult(match: liveMatch, hasOpenMenu: false, orientation: orientation, dt: dt)
             } else if !cachedDockTiles.isEmpty && !hasOpenDockMenu {
                 // Cursor is near Dock but not over any tracked icon -> release cleanly
                 if motionStates.values.contains(where: { $0.isHovered }) {
@@ -238,17 +242,19 @@ public final class OverlayManager {
                 }
             }
 
-            // 2. Refresh cached Dock icon rects periodically in background (tracks Dock reordering/magnification)
-            if !isTileListRefreshInFlight && now.timeIntervalSince(lastTileListRefreshDate) >= 1.5 {
+            // 2. Refresh baseline cached Dock rects periodically when not actively hovering so magnified tiles don't skew cache
+            let anyHoveredNow = motionStates.values.contains(where: { $0.isHovered })
+            if !isTileListRefreshInFlight && !anyHoveredNow && now.timeIntervalSince(lastTileListRefreshDate) >= 1.5 {
                 refreshCachedDockTilesAsync()
             }
 
-            // 3. Background AX hit-test at ~6Hz strictly for right-click menu suppression & exact magnified rects
-            if !isAXHitInFlight && now.timeIntervalSince(lastAXHitDate) >= 0.16 {
+            // 3. Authoritative background AX hit-test at ~30Hz while near Dock: tracks live magnified center & icon switches
+            if !isAXHitInFlight && now.timeIntervalSince(lastAXHitDate) >= 0.032 {
                 triggerAsyncAXVerify(orientation: orientation, dt: dt)
             }
         } else {
             hasOpenDockMenu = false
+            latestAXMatch = nil
             if motionStates.values.contains(where: { $0.isHovered }) {
                 clearHoverFlags()
                 tooltipPanel.hide()
@@ -362,24 +368,56 @@ public final class OverlayManager {
         }
     }
 
-    private func instantCachedHitTest() -> DockTileMatch? {
-        guard !cachedDockTiles.isEmpty, let cgEvent = CGEvent(source: nil) else { return nil }
+    private func resolveImmediateMatch(now: Date, orientation: DockOrientation) -> DockTileMatch? {
+        guard let cgEvent = CGEvent(source: nil) else { return nil }
         let pt = cgEvent.location
+
+        // If we have a recent authoritative AX hit and cursor is still inside that live magnified tile, use its exact live frame
+        if let ax = latestAXMatch,
+           enabledAgents.contains(ax.agentID),
+           now.timeIntervalSince(latestAXVerifyDate) < 0.12,
+           ax.axFrame.insetBy(dx: -2, dy: -4).contains(pt) {
+            return DockTileMatch(
+                agentID: ax.agentID,
+                bundleID: ax.bundleID,
+                appURL: ax.appURL,
+                cocoaFrame: ax.cocoaFrame,
+                axFrame: ax.axFrame,
+                cgCursor: pt
+            )
+        }
+
+        // Otherwise pick the closest cached tile along the Dock axis (eliminates array-order overlap stickiness)
+        return instantCachedHitTest(at: pt, orientation: orientation)
+    }
+
+    private func instantCachedHitTest(at pt: CGPoint, orientation: DockOrientation) -> DockTileMatch? {
+        guard !cachedDockTiles.isEmpty else { return nil }
+        var bestTile: CachedDockTile?
+        var bestDist: CGFloat = .greatestFiniteMagnitude
+
         for tile in cachedDockTiles {
             guard enabledAgents.contains(tile.agentID) else { continue }
-            // Expand hit box slightly by 4pt to handle Dock magnification gracefully before AX verify catches up
-            if tile.axFrame.insetBy(dx: -4, dy: -6).contains(pt) {
-                return DockTileMatch(
-                    agentID: tile.agentID,
-                    bundleID: tile.bundleID,
-                    appURL: tile.appURL,
-                    cocoaFrame: tile.cocoaFrame,
-                    axFrame: tile.axFrame,
-                    cgCursor: pt
-                )
+            if tile.axFrame.insetBy(dx: -2, dy: -5).contains(pt) {
+                let axisDist: CGFloat = (orientation == .bottom)
+                    ? abs(pt.x - tile.axFrame.midX)
+                    : abs(pt.y - tile.axFrame.midY)
+                if axisDist < bestDist {
+                    bestDist = axisDist
+                    bestTile = tile
+                }
             }
         }
-        return nil
+
+        guard let tile = bestTile else { return nil }
+        return DockTileMatch(
+            agentID: tile.agentID,
+            bundleID: tile.bundleID,
+            appURL: tile.appURL,
+            cocoaFrame: tile.cocoaFrame,
+            axFrame: tile.axFrame,
+            cgCursor: pt
+        )
     }
 
     private func refreshCachedDockTilesAsync() {
@@ -409,6 +447,7 @@ public final class OverlayManager {
 
         isAXHitInFlight = true
         lastAXHitDate = Date()
+        let queryCursor = CGEvent(source: nil)?.location ?? .zero
         let targets = Array(enabledAgents)
         let mainHeight = CGDisplayBounds(CGMainDisplayID()).height
 
@@ -421,32 +460,43 @@ public final class OverlayManager {
             )
             self.isAXHitInFlight = false
             self.hasOpenDockMenu = hasOpenMenu
+            self.latestAXVerifyDate = Date()
 
-            // Update cached rect for this agent if Dock magnification shifted its exact frame
-            if let hm = match {
-                if let idx = self.cachedDockTiles.firstIndex(where: { $0.agentID == hm.agentID }) {
-                    self.cachedDockTiles[idx] = CachedDockTile(
-                        agentID: hm.agentID,
-                        bundleID: hm.bundleID,
-                        appURL: hm.appURL,
-                        cocoaFrame: hm.cocoaFrame,
-                        axFrame: hm.axFrame
-                    )
-                } else {
-                    self.cachedDockTiles.append(CachedDockTile(
-                        agentID: hm.agentID,
-                        bundleID: hm.bundleID,
-                        appURL: hm.appURL,
-                        cocoaFrame: hm.cocoaFrame,
-                        axFrame: hm.axFrame
-                    ))
-                }
-            }
             if hasOpenMenu {
+                self.latestAXMatch = nil
                 self.clearHoverFlags()
                 self.tooltipPanel.hide()
-            } else if self.cachedDockTiles.isEmpty {
-                self.applyHitResult(match: match, hasOpenMenu: false, orientation: orientation, dt: dt)
+                return
+            }
+
+            let liveCursor = CGEvent(source: nil)?.location ?? queryCursor
+
+            if let hm = match {
+                let cursorDrift = hypot(liveCursor.x - hm.cgCursor.x, liveCursor.y - hm.cgCursor.y)
+                if cursorDrift <= 28 {
+                    self.latestAXMatch = hm
+                    // Seed uncached newly launched/added Dock apps without overwriting baseline unmagnified rects
+                    if !self.cachedDockTiles.contains(where: { $0.agentID == hm.agentID }) {
+                        self.cachedDockTiles.append(CachedDockTile(
+                            agentID: hm.agentID,
+                            bundleID: hm.bundleID,
+                            appURL: hm.appURL,
+                            cocoaFrame: hm.cocoaFrame,
+                            axFrame: hm.axFrame
+                        ))
+                    }
+                    self.applyHitResult(match: hm, hasOpenMenu: false, orientation: orientation, dt: dt)
+                }
+            } else {
+                // Only clear hover if cursor didn't already sweep past a gap onto a neighbor during the 1-3ms AX IPC
+                let cursorDrift = hypot(liveCursor.x - queryCursor.x, liveCursor.y - queryCursor.y)
+                if cursorDrift <= 12 {
+                    self.latestAXMatch = nil
+                    if self.motionStates.values.contains(where: { $0.isHovered }) {
+                        self.clearHoverFlags()
+                        self.tooltipPanel.hide()
+                    }
+                }
             }
         }
     }
