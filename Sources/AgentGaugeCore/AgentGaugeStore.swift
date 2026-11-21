@@ -322,7 +322,7 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.2.0 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        AppLogger.shared.log("System", "AgentGauge v1.2.1 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
         pushSettingsToOverlay()
         overlayManager.start()
         registerSleepWakeObservers()

@@ -9,6 +9,28 @@ import Foundation
 struct DiagProbe {
     static func main() async {
         let argv = CommandLine.arguments
+        if argv.contains("--verify-hysteresis") {
+            let rectA = CGRect(x: 100, y: 1000, width: 68, height: 68)
+            let rectB = CGRect(x: 176, y: 1000, width: 68, height: 68)
+            var current = "A"; var switches = 0
+            for i in 0..<200 {
+                let pt = CGPoint(x: 176.0 + CGFloat((i % 2 == 0) ? 2.5 : -2.5), y: 1034)
+                if rectB.contains(pt) && current != "B" && OverlayManager.shouldCommitNeighborSwitch(cursor: pt, candidateAXFrame: rectB, orientation: .bottom) { current = "B"; switches += 1 }
+                else if rectA.contains(pt) && current != "A" && OverlayManager.shouldCommitNeighborSwitch(cursor: pt, candidateAXFrame: rectA, orientation: .bottom) { current = "A"; switches += 1 }
+            }
+            precondition(switches == 0, "Expected 0 seam oscillations")
+            for x in stride(from: 120.0, through: 200.0, by: 1.0) {
+                let pt = CGPoint(x: x, y: 1034)
+                if rectB.contains(pt) && current != "B" && OverlayManager.shouldCommitNeighborSwitch(cursor: pt, candidateAXFrame: rectB, orientation: .bottom) { current = "B"; switches += 1 }
+            }
+            for x in stride(from: 200.0, through: 120.0, by: -1.0) {
+                let pt = CGPoint(x: x, y: 1034)
+                if rectA.contains(pt) && current != "A" && OverlayManager.shouldCommitNeighborSwitch(cursor: pt, candidateAXFrame: rectA, orientation: .bottom) { current = "A"; switches += 1 }
+            }
+            precondition(switches == 2 && current == "A", "Expected exact 2 clean directional switches")
+            print("Schmitt-trigger test PASSED: 0 seam oscillations, exact 2 directional transitions")
+            return
+        }
         if let i = argv.firstIndex(of: "--promo") {
             let out = (i + 1 < argv.count) ? argv[i + 1] : "\(PromoExport.repoRoot)/Promo/public"
             await PromoExport.run(outDir: out)

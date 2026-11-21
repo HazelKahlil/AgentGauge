@@ -41,14 +41,15 @@ public final class OverlayManager {
     private var lastCursorX: CGFloat = 0
     private var hasValidLastCursorX: Bool = false
 
-    // Instant 0ms cached Dock geometry + authoritative ~30Hz off-main-thread AX verification
+    // Single-authority 60Hz AX state machine + Schmitt-trigger boundary hysteresis (zero seam oscillation!)
     private var cachedDockTiles: [CachedDockTile] = []
     private var isTileListRefreshInFlight: Bool = false
     private var lastTileListRefreshDate: Date = .distantPast
     private var isAXHitInFlight: Bool = false
     private var lastAXHitDate: Date = .distantPast
-    private var latestAXMatch: DockTileMatch?
-    private var latestAXVerifyDate: Date = .distantPast
+    private var activeMatch: DockTileMatch?
+    private var hasAXAuthority: Bool = false
+    private var outsideGraceStart: Date?
     private var hasOpenDockMenu: Bool = false
 
     private var cachedDockPID: pid_t = 0
@@ -200,7 +201,9 @@ public final class OverlayManager {
     }
 
     public func hideAll() {
-        latestAXMatch = nil
+        activeMatch = nil
+        hasAXAuthority = false
+        outsideGraceStart = nil
         tooltipPanel.hide(immediate: true)
         for id in AgentID.allCases {
             motionStates[id]?.isHovered = false
@@ -231,36 +234,33 @@ public final class OverlayManager {
         let mouseNearDock = isCursorNearAnyDockEdge(orientation: orientation)
 
         if mouseNearDock {
-            // 1. Prefer fresh authoritative AX magnified match when cursor is still inside it;
-            //    otherwise fall back to 0ms nearest-center cached Dock hit-test for instant switch response.
-            if !hasOpenDockMenu, let liveMatch = resolveImmediateMatch(now: now, orientation: orientation) {
-                applyHitResult(match: liveMatch, hasOpenMenu: false, orientation: orientation)
-            } else if !cachedDockTiles.isEmpty && !hasOpenDockMenu {
-                // Cursor is near Dock but not over any tracked icon -> release cleanly
-                if motionStates.values.contains(where: { $0.isHovered }) {
-                    clearHoverFlags()
-                    tooltipPanel.hide()
-                }
+            // 1. Frame-0 cold-start bootstrap ONLY before the first 1.2ms AX query returns.
+            //    Once AX authority is established, unmagnified cached rects NEVER compete with live magnified AX rects!
+            if !hasAXAuthority, activeMatch == nil, !hasOpenDockMenu,
+               let pt = CGEvent(source: nil)?.location,
+               let bootMatch = instantCachedHitTest(at: pt, orientation: orientation) {
+                activeMatch = bootMatch
+                applyHitResult(match: bootMatch, hasOpenMenu: false, orientation: orientation)
+            } else if let cur = activeMatch, let pt = CGEvent(source: nil)?.location,
+                      !isWithinSeamHoldBand(pt, of: cur.axFrame, orientation: orientation, lateralSlack: 40, verticalSlack: 20) {
+                // Fast vertical exit onto desktop before in-flight AX returns -> release on Frame 0
+                releaseActiveHover()
             }
 
-            // 2. Refresh baseline cached Dock rects periodically when not actively hovering so magnified tiles don't skew cache
-            let anyHoveredNow = motionStates.values.contains(where: { $0.isHovered })
-            if !isTileListRefreshInFlight && !anyHoveredNow && now.timeIntervalSince(lastTileListRefreshDate) >= 1.5 {
+            // 2. Refresh baseline cached Dock rects periodically ONLY when unhovered so magnified tiles don't skew cache
+            if !isTileListRefreshInFlight && activeMatch == nil && now.timeIntervalSince(lastTileListRefreshDate) >= 1.5 {
                 refreshCachedDockTilesAsync()
             }
 
-            // 3. Authoritative background AX hit-test at ~30Hz while near Dock: tracks live magnified center & icon switches
-            if !isAXHitInFlight && now.timeIntervalSince(lastAXHitDate) >= 0.032 {
+            // 3. Single-authority 60Hz off-main-thread AX classification with Schmitt-trigger seam hysteresis
+            if !isAXHitInFlight && now.timeIntervalSince(lastAXHitDate) >= 0.015 {
                 triggerAsyncAXVerify(orientation: orientation)
             }
         } else {
             hasOpenDockMenu = false
-            latestAXMatch = nil
+            hasAXAuthority = false
             hasValidLastCursorX = false
-            if motionStates.values.contains(where: { $0.isHovered }) {
-                clearHoverFlags()
-                tooltipPanel.hide()
-            }
+            releaseActiveHover()
         }
 
         let anyHoveredOrSettling = motionStates.values.contains {
@@ -392,36 +392,43 @@ public final class OverlayManager {
         }
     }
 
-    private func resolveImmediateMatch(now: Date, orientation: DockOrientation) -> DockTileMatch? {
-        guard let cgEvent = CGEvent(source: nil) else { return nil }
-        let pt = cgEvent.location
-        let cachedNearest = instantCachedHitTest(at: pt, orientation: orientation)
-
-        // If we have a recent authoritative AX hit and cursor hasn't crossed the midpoint toward an adjacent neighbor,
-        // keep its live magnified rect; otherwise switch on Frame 0 (0ms) to the neighbor!
-        if let ax = latestAXMatch,
-           enabledAgents.contains(ax.agentID),
-           now.timeIntervalSince(latestAXVerifyDate) < 0.12,
-           ax.axFrame.insetBy(dx: -1, dy: -4).contains(pt) {
-            if let neighbor = cachedNearest, neighbor.agentID != ax.agentID {
-                let distToAX = (orientation == .bottom) ? abs(pt.x - ax.axFrame.midX) : abs(pt.y - ax.axFrame.midY)
-                let distToNeighbor = (orientation == .bottom) ? abs(pt.x - neighbor.axFrame.midX) : abs(pt.y - neighbor.axFrame.midY)
-                if distToNeighbor + 2.0 < distToAX {
-                    return neighbor
-                }
-            }
-            return DockTileMatch(
-                agentID: ax.agentID,
-                bundleID: ax.bundleID,
-                appURL: ax.appURL,
-                cocoaFrame: ax.cocoaFrame,
-                axFrame: ax.axFrame,
-                cgCursor: pt,
-                isLiveAX: true
-            )
+    private func isWithinSeamHoldBand(
+        _ pt: CGPoint,
+        of axFrame: CGRect,
+        orientation: DockOrientation,
+        lateralSlack: CGFloat,
+        verticalSlack: CGFloat
+    ) -> Bool {
+        switch orientation {
+        case .bottom:
+            return axFrame.insetBy(dx: -lateralSlack, dy: -verticalSlack).contains(pt)
+        case .left, .right:
+            return axFrame.insetBy(dx: -verticalSlack, dy: -lateralSlack).contains(pt)
         }
+    }
 
-        return cachedNearest
+    private func releaseActiveHover() {
+        activeMatch = nil
+        outsideGraceStart = nil
+        if motionStates.values.contains(where: { $0.isHovered }) {
+            clearHoverFlags()
+            tooltipPanel.hide()
+        }
+    }
+
+    /// Evaluates whether a candidate neighbor icon has crossed the Schmitt-trigger interior penetration threshold.
+    /// Prevents `A <-> B` oscillation when the cursor rests right on the boundary or inter-icon seam under Dock magnification.
+    public static func shouldCommitNeighborSwitch(
+        cursor: CGPoint,
+        candidateAXFrame: CGRect,
+        orientation: DockOrientation
+    ) -> Bool {
+        let inward: CGFloat = (orientation == .bottom)
+            ? min(cursor.x - candidateAXFrame.minX, candidateAXFrame.maxX - cursor.x)
+            : min(cursor.y - candidateAXFrame.minY, candidateAXFrame.maxY - cursor.y)
+        let span: CGFloat = (orientation == .bottom) ? candidateAXFrame.width : candidateAXFrame.height
+        let requiredPenetration = min(5.5, max(3.8, span * 0.075))
+        return inward >= requiredPenetration
     }
 
     private func instantCachedHitTest(at pt: CGPoint, orientation: DockOrientation) -> DockTileMatch? {
@@ -431,7 +438,7 @@ public final class OverlayManager {
 
         for tile in cachedDockTiles {
             guard enabledAgents.contains(tile.agentID) else { continue }
-            if tile.axFrame.insetBy(dx: -2, dy: -5).contains(pt) {
+            if tile.axFrame.insetBy(dx: 2, dy: -2).contains(pt) {
                 let axisDist: CGFloat = (orientation == .bottom)
                     ? abs(pt.x - tile.axFrame.midX)
                     : abs(pt.y - tile.axFrame.midY)
@@ -449,7 +456,8 @@ public final class OverlayManager {
             appURL: tile.appURL,
             cocoaFrame: tile.cocoaFrame,
             axFrame: tile.axFrame,
-            cgCursor: pt
+            cgCursor: pt,
+            isLiveAX: false
         )
     }
 
@@ -486,48 +494,89 @@ public final class OverlayManager {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let (match, hasOpenMenu) = await self.locator.hitTestHoveredTileAsync(
+            let outcome = await self.locator.classifyHoveredTileAsync(
                 for: targets,
                 dockPID: dockPID,
                 mainDisplayHeight: mainHeight
             )
             self.isAXHitInFlight = false
-            self.hasOpenDockMenu = hasOpenMenu
-            self.latestAXVerifyDate = Date()
-
-            if hasOpenMenu {
-                self.latestAXMatch = nil
-                self.clearHoverFlags()
-                self.tooltipPanel.hide()
-                return
-            }
+            self.hasAXAuthority = true
 
             let liveCursor = CGEvent(source: nil)?.location ?? queryCursor
 
-            if let hm = match {
+            switch outcome {
+            case .openMenu:
+                self.hasOpenDockMenu = true
+                self.releaseActiveHover()
+
+            case .matched(let hm):
+                self.hasOpenDockMenu = false
+                self.outsideGraceStart = nil
                 let cursorDrift = hypot(liveCursor.x - hm.cgCursor.x, liveCursor.y - hm.cgCursor.y)
-                if cursorDrift <= 28 {
-                    self.latestAXMatch = hm
-                    // Seed uncached newly launched/added Dock apps without overwriting baseline unmagnified rects
-                    if !self.cachedDockTiles.contains(where: { $0.agentID == hm.agentID }) {
-                        self.cachedDockTiles.append(CachedDockTile(
-                            agentID: hm.agentID,
-                            bundleID: hm.bundleID,
-                            appURL: hm.appURL,
-                            cocoaFrame: hm.cocoaFrame,
-                            axFrame: hm.axFrame
-                        ))
-                    }
-                    self.applyHitResult(match: hm, hasOpenMenu: false, orientation: orientation)
+                guard cursorDrift <= 38 else { return }
+
+                // Seed uncached newly launched/added Dock apps without overwriting baseline unmagnified rects
+                if !self.cachedDockTiles.contains(where: { $0.agentID == hm.agentID }) {
+                    self.cachedDockTiles.append(CachedDockTile(
+                        agentID: hm.agentID,
+                        bundleID: hm.bundleID,
+                        appURL: hm.appURL,
+                        cocoaFrame: hm.cocoaFrame,
+                        axFrame: hm.axFrame
+                    ))
                 }
-            } else {
-                // Only clear hover if cursor didn't already sweep past a gap onto a neighbor during the 1-3ms AX IPC
+
+                if let cur = self.activeMatch, cur.agentID != hm.agentID {
+                    // Schmitt-trigger hysteresis: require clear inward penetration into neighbor before switching
+                    guard Self.shouldCommitNeighborSwitch(
+                        cursor: hm.cgCursor,
+                        candidateAXFrame: hm.axFrame,
+                        orientation: orientation
+                    ) else {
+                        return
+                    }
+                }
+
+                self.activeMatch = hm
+                self.applyHitResult(match: hm, hasOpenMenu: false, orientation: orientation)
+
+            case .dockGap(let cgCursor):
+                self.hasOpenDockMenu = false
+                // Parked in the narrow inter-icon seam between two Dock icons -> hold current icon rock-steady!
+                if let cur = self.activeMatch {
+                    if self.isWithinSeamHoldBand(cgCursor, of: cur.axFrame, orientation: orientation, lateralSlack: 22, verticalSlack: 12) {
+                        self.outsideGraceStart = nil
+                    } else {
+                        self.releaseActiveHover()
+                    }
+                }
+
+            case .untrackedItem(let uRect, let cgCursor):
+                self.hasOpenDockMenu = false
+                if let cur = self.activeMatch {
+                    let enteredUntracked = Self.shouldCommitNeighborSwitch(
+                        cursor: cgCursor,
+                        candidateAXFrame: uRect,
+                        orientation: orientation
+                    )
+                    if enteredUntracked || !self.isWithinSeamHoldBand(cgCursor, of: cur.axFrame, orientation: orientation, lateralSlack: 24, verticalSlack: 12) {
+                        self.releaseActiveHover()
+                    }
+                }
+
+            case .outsideDock(let cgCursor):
+                self.hasOpenDockMenu = false
                 let cursorDrift = hypot(liveCursor.x - queryCursor.x, liveCursor.y - queryCursor.y)
-                if cursorDrift <= 12 {
-                    self.latestAXMatch = nil
-                    if self.motionStates.values.contains(where: { $0.isHovered }) {
-                        self.clearHoverFlags()
-                        self.tooltipPanel.hide()
+                guard cursorDrift <= 18 else { return }
+                if let cur = self.activeMatch {
+                    if !self.isWithinSeamHoldBand(cgCursor, of: cur.axFrame, orientation: orientation, lateralSlack: 14, verticalSlack: 6) {
+                        self.releaseActiveHover()
+                    } else if let t0 = self.outsideGraceStart {
+                        if Date().timeIntervalSince(t0) >= 0.055 {
+                            self.releaseActiveHover()
+                        }
+                    } else {
+                        self.outsideGraceStart = Date()
                     }
                 }
             }

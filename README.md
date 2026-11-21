@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.2.0-141413?style=flat-square" alt="Release v1.2.0" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.2.1-141413?style=flat-square" alt="Release v1.2.1" /></a>
     <img src="https://img.shields.io/badge/platform-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/engine-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/supported-30%2B%20AI%20Models%20%26%20Plans-478577?style=flat-square" alt="30+ AI Models & Plans" />
@@ -15,7 +15,7 @@
   </p>
 
   <p>
-    <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a> · <a href="https://usage.komorebi.date">Official Website</a> · <a href="https://usage.komorebi.date/#lab">Live WebGL Lab</a> · <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest">Releases</a>
+    <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a> · <a href="https://usage.komorebi.date">Official Website</a> · <a href="https://usage.komorebi.date/#changelog">Changelog</a> · <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest">Releases</a>
   </p>
 
   <br />
@@ -61,10 +61,11 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ---
 
-## What's New in v1.2.0
+## What's New in v1.2.1 (See [CHANGELOG.md](./CHANGELOG.md))
 
-- **11 Curated Optical-Water Styles**: New pure-icon indicator suite (`Top Timer Scrim`, `Dynamic Split`, `Micro-Halo Text`, `Concentric R-Corner Dodge`, `Aperture Sweep`, `Pixel LED Matrix`, `Dual-Track HUD`, `Braun Arc Needle`, `5-Cell Prism Bar`, `Dynamic Micro-Island`, `Top Energy Brow`) unified onto the signature optical bubble-refraction Metal shader.
-- **Gravity-Stabilized 120Hz Physics & Rail Centering**: Critically damped wave equilibrium (`0` async jitter) and perpendicular-bisector neighbor handoff so Dock hover cards glide along a horizontal rail without vertical bounce.
+- **Zero-Flicker Schmitt-Trigger Dock Handoff (`v1.2.1`)**: Eliminated hover oscillation (`A ↔ B` / `On ↔ Off`) when parking the pointer on the boundary or empty gap between adjacent magnified Dock icons via a single-authority 60Hz `DockAXHitOutcome` state machine with `~17pt` bidirectional hysteresis and inter-icon seam hold.
+- **11 Curated Optical-Water Styles**: Pure-icon indicator suite (`Top Timer Scrim`, `Dynamic Split`, `Micro-Halo Text`, `Concentric R-Corner Dodge`, `Aperture Sweep`, `Pixel LED Matrix`, `Dual-Track HUD`, `Braun Arc Needle`, `5-Cell Prism Bar`, `Dynamic Micro-Island`, `Top Energy Brow`) unified onto the signature optical bubble-refraction Metal shader.
+- **Gravity-Stabilized 120Hz Physics & Rail Centering**: Critically damped wave equilibrium (`0` async jitter) and constant horizontal hover rail without vertical bounce.
 - **Authentic 30+ Model & Coding-Plan Purification + API Balances**: Focused on real metered models & plans; added direct currency balance rendering (`DeepSeek` / `Kimi` `¥` / `$` API balances), GitHub Copilot (`gh api /copilot_internal/user`), Windsurf local Protobuf state, and cached Antigravity `AI Ultra` plan tier detection.
 - **Zero-Power Sleep & Self-Healing IPC**: Automatic `NSWorkspace` sleep/screen-lock suspension, 5s Mach Dock-tile circuit breaker, and deterministic subprocess reaping.
 
@@ -74,10 +75,10 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ### Download Installer (`.dmg`)
 
-- **GitHub Releases (Primary)**: [**AgentGauge-v1.2.0-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.2.0-macOS.dmg) (`2.7 MB`, Apple Silicon / macOS 26+)
-- **Official Website Mirror (Fast Global / China CDN)**: [**usage.komorebi.date/downloads/AgentGauge-v1.2.0-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.2.0-macOS.dmg)
+- **GitHub Releases (Primary)**: [**AgentGauge-v1.2.1-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.2.1-macOS.dmg) (`2.7 MB`, Apple Silicon / macOS 26+)
+- **Official Website Mirror (Fast Global / China CDN)**: [**usage.komorebi.date/downloads/AgentGauge-v1.2.1-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.2.1-macOS.dmg)
 
-1. Open `AgentGauge-v1.2.0-macOS.dmg` and drag **AgentGauge** into `/Applications`.
+1. Open `AgentGauge-v1.2.1-macOS.dmg` and drag **AgentGauge** into `/Applications`.
 2. Launch **AgentGauge** and grant **Accessibility** permission when macOS prompts once (used solely to detect which Dock icon sits under your cursor).
 3. *(Optional)* If macOS Gatekeeper displays an unverified developer prompt on first launch, run the following command in Terminal or click **Open Anyway** in **System Settings → Privacy & Security**:
    ```bash

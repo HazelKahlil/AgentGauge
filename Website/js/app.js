@@ -7,7 +7,7 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const I18N = window.AG_I18N;
-  const ASSET_V = "1.2.0";
+  const ASSET_V = "1.2.2";
   const ICON = (id) => `assets/icons/${id}.png?v=${ASSET_V}`;
 
   /* ------------------------------------------------------------------ 29 authentic Coding-Plan & Foundation-Model vendors */
@@ -789,7 +789,8 @@
     let closestId = null, bestDist = 46;
     dockItemEls.forEach((it) => {
       const b = toStage(it);
-      const d = Math.abs(stageX - (b.x + b.w / 2));
+      const bonus = it.dataset.id === activeDock ? 5.5 : 0;
+      const d = Math.abs(stageX - (b.x + b.w / 2)) - bonus;
       if (d < bestDist) { bestDist = d; closestId = it.dataset.id; }
     });
     setDockActive(closestId);
@@ -1147,6 +1148,182 @@
     renderApps();
   });
   langListeners.push(renderApps);
+
+  /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
+  const CHANGELOG_ENTRIES = [
+    {
+      ver: "v1.2.1", id: "v1-2-1", date: "2026-11-22", latest: true,
+      title: [
+        "Zero-flicker Schmitt-trigger Dock seam handoff & official Changelog",
+        "Dock 图标缝隙零闪烁施密特触发器、多样式混搭片头与官方更新日志",
+      ],
+      summary: [
+        "Eliminates hover boundary oscillation between adjacent Dock icons when macOS Dock Magnification is active, upgrades the 62s film opening to showcase 6 liquid styles side-by-side, and introduces the versioned product Changelog.",
+        "彻底解决开启 macOS Dock 放大时鼠标停在相邻图标交界或空隙处来回闪烁切换的问题，重制多样式同屏混搭宣传片头，并上线双语版本更新日志。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>No more Dock boundary or inter-icon seam flickering (<code>A ↔ B</code> / <code>On ↔ Off</code>)</b>: <code>OverlayManager</code> previously blended 30Hz live magnified <code>AXFrame</code> coordinates with 60Hz unmagnified baseline <code>cachedDockTiles</code>, letting the two coordinate frames disagree along icon edges. <code>DockLocator</code> now classifies all five <code>AXUIElementCopyElementAtPosition</code> states (<code>.matched</code>, <code>.dockGap</code>, <code>.untrackedItem</code>, <code>.outsideDock</code>, <code>.openMenu</code>) under a single-authority 60Hz state machine with a <code>3.8–5.5pt</code> Schmitt-trigger penetration threshold (<code>~17pt</code> bidirectional deadband) and inter-icon seam hold.",
+            "<b>消除 Dock 相邻图标交界与中间缝隙处的来回闪烁跳变</b>：此前 <code>OverlayManager</code> 同时混用了 30Hz 实时放大态 <code>AXFrame</code> 与 60Hz 未放大基线缓存 <code>cachedDockTiles</code>，导致两套坐标系在边缘竞争。现重构 <code>DockLocator</code> 五态分类状态机，由单一 60Hz 权威状态机配合 <code>3.8–5.5pt</code> 施密特触发器（双向约 <code>17pt</code> 迟滞死区）与空隙保持带，在任意停留点实现零闪烁锁定。",
+          ],
+        ]],
+        ["added", [
+          [
+            "<b>Interactive Website Changelog &amp; Repository <code>CHANGELOG.md</code></b>: Bilingual version timeline following Keep a Changelog &amp; Semantic Versioning with permanent per-release anchors.",
+            "<b>上线官网双语更新日志板块与仓库 <code>CHANGELOG.md</code></b>：遵循 Keep a Changelog 与语义化版本规范，支持单版本锚点直链。",
+          ],
+        ]],
+        ["improved", [
+          [
+            "<b>Multi-Style Film Opening &amp; <code>30+</code> Ecosystem Matrix</b>: Re-rendered the opening close-ups, 6-icon live Dock bar, and 2×2 draining quartet so <code>Top Timer Scrim</code>, <code>Pixel LED Matrix</code>, <code>Braun Arc Needle</code>, <code>Dual-Track HUD</code>, <code>Dynamic Split</code> and <code>Concentric R-Corner</code> appear side-by-side right from the start.",
+            "<b>宣传片开场多样式同屏混搭与 <code>30+</code> 持续扩展矩阵</b>：重制开场高清特写、实景 Dock 6 图标混搭与 2×2 四宫格同步放水画面，开篇即呈现 6 款代表性液态样式的自由组合。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.2.0", id: "v1-2-0", date: "2026-11-22",
+      title: [
+        "11 curated optical-water styles, pure metered providers & API currency balances",
+        "11 款纯图标精选光学水波样式、真实计费厂商提纯与 API 余额直连",
+      ],
+      summary: [
+        "Unifies 11 precision-crafted pure-icon indicators onto the signature refracting bubble-water Metal shader, adds first-class API currency balance pools, and hardens sleep/IPC reliability.",
+        "将 11 款纯图标精密余量样式统一至招牌微泡折射液态着色器，新增官方 API 货币余额池一等公民展示，并完成系统休眠与底层 IPC 自愈加固。",
+      ],
+      groups: [
+        ["added", [
+          [
+            "<b>11 Curated Pure-Icon Liquid Styles</b>: Replaced experimental geometric semicircles with <code>Top Timer Scrim</code>, <code>Dynamic Split</code>, <code>Micro-Halo Text</code>, <code>Concentric R-Corner Dodge</code>, <code>Aperture Sweep</code>, <code>Pixel LED Matrix</code>, <code>Dual-Track HUD</code>, <code>Braun Arc Needle</code>, <code>5-Cell Prism Bar</code>, <code>Dynamic Micro-Island</code> and <code>Top Energy Brow</code> — all running over unified 16-bit optical bubble water.",
+            "<b>11 款纯图标精选光学水波样式</b>：移除实验性半圆与外白圈边框，定制截图顶栏时间、动态反相字、微晶描边字、同心 R 角避让、光圈扇叶扫描、像素 LED 点阵、双轨微仪表、博朗圆弧指针、底部 5 格晶块、顶部灵动微岛与顶部弧形光眉，全系共享双层折射微泡水体。",
+          ],
+          [
+            "<b>First-Class API Currency Balances &amp; New Native Providers</b>: Added <code>balanceDisplay</code> / <code>dockBalanceShort</code> for <code>DeepSeek</code> and <code>Kimi</code> currency balance pools (e.g. <code>¥28.50</code> in card, <code>¥29</code> on Dock icon), <code>VS Code (Copilot)</code> via <code>gh api</code>, <code>Windsurf</code> local Protobuf state parsing, <code>MiniMax</code> Coding Plan support, and full offline <code>256×256</code> squircle icons.",
+            "<b>官方 API 货币余额池与多家原生 Provider</b>：支持 DeepSeek / Kimi 货币余额展示（悬停卡片显示 <code>¥28.50</code>、Dock 图标显示 <code>¥29</code>），新增 VS Code (Copilot) 本地配额、Windsurf 本地状态解析、MiniMax 接入及全量 <code>256×256</code> 离线兜底图标。",
+          ],
+        ]],
+        ["improved", [
+          [
+            "<b>First-Principles Metering Purification (Zero Fake <code>100%</code>)</b>: Purged non-metered local browsers, orchestrators and BYOK shells; unauthenticated providers strictly return <code>nil</code> rather than fabricating <code>100%</code>.",
+            "<b>第一性原理计费目录提纯与「零假 100%」铁律</b>：剔除本地浏览器与无独立计费的空壳客户端；未认证状态严格返回空值，绝不伪造 <code>100%</code>。",
+          ],
+          [
+            "<b>Gravity-Stabilized Wave Physics &amp; Low-Water Contrast</b>: Locked horizontal equilibrium (<code>targetTilt = 0</code>) with near-critical spring damping (<code>20 / 8.4</code>), and boosted scrim contrast on white icons (<code>ChatGPT</code>, <code>Antigravity</code>) at <code>14%–24%</code> low water.",
+            "<b>重力稳态液面物理与浅色图标低水位增强</b>：移除异步倾角写冲突，升级近临界阻尼弹簧，并为纯白/浅色图标在 <code>14%–24%</code> 低水位区间自适应加深底衬对比度。",
+          ],
+          [
+            "<b>Zero-Power Sleep &amp; Self-Healing Mach IPC</b>: Added <code>NSWorkspace</code> sleep/wake suspension, a 5s <code>NativeTileChannel</code> circuit breaker, strict DNS-boundary cookie matching, and deterministic subprocess reaping.",
+            "<b>合盖休眠零功耗与 Mach 断路自愈</b>：新增睡眠/锁屏自动挂起、Dock 图块 Mach 通道 5 秒熔断自愈、严格域名边界 Cookie 匹配与子进程确定性回收。",
+          ],
+        ]],
+        ["fixed", [
+          [
+            "<b>Restored Antigravity &amp; Gemini <code>AI Ultra</code> Plan Badge</b>: Replaced raw <code>openpty</code> with unbuffered <code>/usr/bin/script -q -F</code> + <code>/credits</code> redraw, scalar ANSI stripping, <code>AntigravityCLISingleFlight</code> deduplication, and 24h per-account caching.",
+            "<b>修复 Antigravity 与 Gemini <code>AI Ultra</code> 套餐等级识别</b>：采用无缓冲伪终端重绘与纯 Swift 标量状态机剥离 ANSI 序列，配合单飞并发合并与 24 小时账号级缓存。",
+          ],
+          [
+            "<b>Eliminated ChatGPT White-Squircle Seam</b>: Fixed a horizontal optical break across bright white app icons in <code>NativeIconRenderer</code>.",
+            "<b>修复 ChatGPT 纯白图标断层伪影</b>：消除高亮度白色图标在水线过渡处的光学断层。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.1.2", id: "v1-1-2", date: "2026-11-21", older: true,
+      title: [
+        "120Hz horizontal hover rail, per-app anchor lock & open-source release",
+        "120Hz 悬停卡片水平导轨锁定、单应用放大防抖与开源双语文档",
+      ],
+      summary: [
+        "Locks hover cards to a constant horizontal rail across the Dock while eliminating magnification wobble, and opens the repository under the MIT License.",
+        "锁定跨应用左右切换时的卡片水平导轨，消除 Dock 放大微呼吸导致的水平晃动，并以 MIT 协议开放双语源码仓库。",
+      ],
+      groups: [
+        ["improved", [
+          [
+            "<b>120Hz Horizontal Rail &amp; Per-App Anchor Lock</b>: Decoupled <code>NSHostingView</code> intrinsic sizing from <code>NSPanel</code> origin positioning so cards glide horizontally without vertical jumps between <code>Grok Bot</code> and <code>WorkBuddy</code>, locking <code>centerX</code> per app once AX-confirmed.",
+            "<b>120Hz 水平导轨平移与单应用锚点锁定</b>：解耦自适应视图测量与窗口定位，左右切换不同高度卡片时底边严格对齐同一水平线，并在 AX 确认后锁定单图标中心防止放大呼吸抖动。",
+          ],
+          [
+            "<b>Unified Navbar Utility Capsule &amp; Bilingual Docs</b>: Added the unified GitHub + Language capsule, asset cache-busting, showcase gallery and MIT license.",
+            "<b>官网顶部胶囊整合与开源双语文档</b>：统一导航栏 GitHub 与中英切换胶囊，发布双语架构文档与 MIT 开源协议。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.1.0", id: "v1-1-0", date: "2026-11-20", older: true,
+      title: [
+        "Initial macOS 26 Tahoe release, 16-bit Metal shader & interactive WebGL Lab",
+        "macOS 26 Tahoe 原生首发：16-bit Metal 液态着色器、顶栏看板与在线实验室",
+      ],
+      summary: [
+        "First public release bringing live 16-bit half-float Metal liquid gauges to the macOS Dock, paired with a unified menu bar dashboard and browser WebGL shader port.",
+        "首次公开发布：将 16-bit 半精度 Metal 实时液态水位带入 macOS Dock，配备一体成型菜单栏全局看板与浏览器实时 WebGL 液态实验室。",
+      ],
+      groups: [
+        ["added", [
+          [
+            "<b>16-Bit Half-Float Metal Dock Renderer &amp; Watchdog</b>: Dual-wave optical water (<code>~1.7 ms</code>/frame), 24 refracting micro-bubbles, low-water auto-dodge, <code>0%</code> cost at rest, and crash-safe <code>AgentGaugeCleanup</code> restoration.",
+            "<b>16-bit 半精度 Metal 渲染管线与守护还原</b>：单帧约 <code>1.7 ms</code> 双层波浪与微泡色散折射、低水位自动避让、闲置零占用，以及异常退出自动复原原生图标。",
+          ],
+          [
+            "<b>Unified Menu Bar Popover, Studio &amp; Website</b>: Single-contour Liquid Glass menu bar dashboard, live badge customization studio, and interactive WebGL Liquid Lab on <code>usage.komorebi.date</code>.",
+            "<b>菜单栏全局看板、样式工作台与交互官网</b>：无接缝液态玻璃菜单栏面板、实时水位样式工作台与产品官网。",
+          ],
+        ]],
+      ],
+    },
+  ];
+
+  const clFeed = $("#changelogFeed");
+  const clToggleBtn = $("#clToggleOlder");
+  let clShowOlder = /^#v1-1-/.test(location.hash);
+
+  function renderChangelog() {
+    if (!clFeed) return;
+    clFeed.innerHTML = CHANGELOG_ENTRIES.map((e) => `
+      <article class="cl-entry reveal in" id="${e.id}"${e.older && !clShowOlder ? " hidden" : ""}>
+        <div class="cl-meta">
+          <div class="cl-ver-row">
+            <span class="cl-ver">${e.ver}</span>
+            ${e.latest ? `<span class="cl-latest">${t("cl.latest")}</span>` : ""}
+          </div>
+          <time class="cl-date" datetime="${e.date}">${e.date}</time>
+          <a class="cl-anchor" href="#${e.id}">#${e.ver}</a>
+        </div>
+        <div class="cl-body">
+          <h3>${bi(e.title)}</h3>
+          <p class="cl-summary">${bi(e.summary)}</p>
+          <div class="cl-groups">
+            ${e.groups.map(([kind, items]) => `
+              <div class="cl-group">
+                <span class="cl-tag ${kind}">${t(`cl.${kind}`)}</span>
+                <ul class="cl-list">${items.map((it) => `<li>${bi(it)}</li>`).join("")}</ul>
+              </div>`).join("")}
+          </div>
+        </div>
+      </article>`).join("");
+    if (clToggleBtn) {
+      $("[data-cl-toggle-lbl]", clToggleBtn).textContent = t(clShowOlder ? "cl.less" : "cl.more");
+    }
+  }
+  if (clToggleBtn) {
+    clToggleBtn.addEventListener("click", () => {
+      clShowOlder = !clShowOlder;
+      renderChangelog();
+    });
+  }
+  window.addEventListener("hashchange", () => {
+    if (/^#v1-1-/.test(location.hash) && !clShowOlder) {
+      clShowOlder = true;
+      renderChangelog();
+      const target = document.getElementById(location.hash.slice(1));
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    }
+  });
+  langListeners.push(renderChangelog);
 
   /* ================================================================== FILM */
   const filmFrame = $(".film-frame");

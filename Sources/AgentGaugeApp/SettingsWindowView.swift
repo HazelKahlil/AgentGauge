@@ -402,7 +402,7 @@ struct SettingsWindowView: View {
                 Text("AgentGauge")
                     .font(.system(size: 14.5, weight: .semibold, design: .rounded))
 
-                Text("v1.2.0")
+                Text("v1.2.1")
                     .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5.5)

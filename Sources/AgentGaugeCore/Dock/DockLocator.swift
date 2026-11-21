@@ -45,6 +45,14 @@ public struct CachedDockTile: Sendable {
     public let axFrame: CGRect
 }
 
+public enum DockAXHitOutcome: Sendable {
+    case matched(DockTileMatch)
+    case dockGap(cgCursor: CGPoint)
+    case untrackedItem(axFrame: CGRect, cgCursor: CGPoint)
+    case outsideDock(cgCursor: CGPoint)
+    case openMenu
+}
+
 public final class DockLocator: @unchecked Sendable {
     private let axQueue = DispatchQueue(label: "com.kahlil.AgentGauge.ax", qos: .userInteractive)
     private let cacheLock = NSLock()
@@ -162,35 +170,53 @@ public final class DockLocator: @unchecked Sendable {
         return results
     }
 
+    /// Classifies the exact Dock element under the cursor off-main-thread so boundary hysteresis never confuses gaps with exits.
+    public func classifyHoveredTileAsync(
+        for targetAgents: [AgentID],
+        dockPID: pid_t,
+        mainDisplayHeight: CGFloat
+    ) async -> DockAXHitOutcome {
+        await withCheckedContinuation { continuation in
+            axQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: .outsideDock(cgCursor: .zero))
+                    return
+                }
+                let outcome = self.classifyHitTest(
+                    for: targetAgents,
+                    dockPID: dockPID,
+                    mainDisplayHeight: mainDisplayHeight
+                )
+                continuation.resume(returning: outcome)
+            }
+        }
+    }
+
     /// Runs off-main-thread so AX IPC to Dock never stutters the UI or cursor.
     public func hitTestHoveredTileAsync(
         for targetAgents: [AgentID],
         dockPID: pid_t,
         mainDisplayHeight: CGFloat
     ) async -> (match: DockTileMatch?, hasOpenMenu: Bool) {
-        await withCheckedContinuation { continuation in
-            axQueue.async { [weak self] in
-                guard let self else {
-                    continuation.resume(returning: (nil, false))
-                    return
-                }
-                let result = self.performHitTest(
-                    for: targetAgents,
-                    dockPID: dockPID,
-                    mainDisplayHeight: mainDisplayHeight
-                )
-                continuation.resume(returning: result)
-            }
+        let outcome = await classifyHoveredTileAsync(
+            for: targetAgents,
+            dockPID: dockPID,
+            mainDisplayHeight: mainDisplayHeight
+        )
+        switch outcome {
+        case .matched(let m): return (m, false)
+        case .openMenu: return (nil, true)
+        case .dockGap, .untrackedItem, .outsideDock: return (nil, false)
         }
     }
 
-    public func performHitTest(
+    public func classifyHitTest(
         for targetAgents: [AgentID],
         dockPID: pid_t,
         mainDisplayHeight: CGFloat
-    ) -> (match: DockTileMatch?, hasOpenMenu: Bool) {
-        guard AXIsProcessTrusted() else { return (nil, false) }
-        guard let cgEvent = CGEvent(source: nil) else { return (nil, false) }
+    ) -> DockAXHitOutcome {
+        guard AXIsProcessTrusted() else { return .outsideDock(cgCursor: .zero) }
+        guard let cgEvent = CGEvent(source: nil) else { return .outsideDock(cgCursor: .zero) }
         let cgCursor = cgEvent.location
 
         let axDock = AXUIElementCreateApplication(dockPID)
@@ -199,31 +225,19 @@ public final class DockLocator: @unchecked Sendable {
         var hitElement: AXUIElement?
         let err = AXUIElementCopyElementAtPosition(axDock, Float(cgCursor.x), Float(cgCursor.y), &hitElement)
         guard err == .success, let elem = hitElement else {
-            return (nil, false)
+            return .outsideDock(cgCursor: cgCursor)
         }
 
         var roleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
         let role = (roleRef as? String) ?? ""
         if role == kAXMenuItemRole as String || role == kAXMenuRole as String {
-            return (nil, true)
+            return .openMenu
         }
 
-        var subroleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(elem, kAXSubroleAttribute as CFString, &subroleRef)
-        guard (subroleRef as? String) == "AXApplicationDockItem" else {
-            return (nil, false)
-        }
-
-        var urlRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(elem, kAXURLAttribute as CFString, &urlRef)
-        guard let appURL = urlRef as? URL,
-              let bundleID = resolveBundleID(for: appURL) else {
-            return (nil, false)
-        }
-
-        guard let agentID = targetAgents.first(where: { $0.matches(bundleIdentifier: bundleID) }) else {
-            return (nil, false)
+        // Empty inter-icon seam inside the Dock glass bar (AXList / AXApplication container)
+        if role == (kAXListRole as String) || role == (kAXApplicationRole as String) {
+            return .dockGap(cgCursor: cgCursor)
         }
 
         var frameRef: CFTypeRef?
@@ -232,13 +246,44 @@ public final class DockLocator: @unchecked Sendable {
         if let frameRef, CFGetTypeID(frameRef) == AXValueGetTypeID() {
             AXValueGetValue(frameRef as! AXValue, .cgRect, &axRect)
         }
+
+        var subroleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXSubroleAttribute as CFString, &subroleRef)
+        let subrole = (subroleRef as? String) ?? ""
+        guard subrole == "AXApplicationDockItem" else {
+            if subrole == "AXSeparatorDockItem" {
+                return .dockGap(cgCursor: cgCursor)
+            }
+            if axRect.width > 8, axRect.height > 8 {
+                return .untrackedItem(axFrame: axRect, cgCursor: cgCursor)
+            }
+            return .outsideDock(cgCursor: cgCursor)
+        }
+
+        var urlRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXURLAttribute as CFString, &urlRef)
+        guard let appURL = urlRef as? URL,
+              let bundleID = resolveBundleID(for: appURL) else {
+            if axRect.width > 8, axRect.height > 8 {
+                return .untrackedItem(axFrame: axRect, cgCursor: cgCursor)
+            }
+            return .outsideDock(cgCursor: cgCursor)
+        }
+
+        guard let agentID = targetAgents.first(where: { $0.matches(bundleIdentifier: bundleID) }) else {
+            if axRect.width > 8, axRect.height > 8 {
+                return .untrackedItem(axFrame: axRect, cgCursor: cgCursor)
+            }
+            return .outsideDock(cgCursor: cgCursor)
+        }
+
         guard axRect.width > 10, axRect.height > 10 else {
-            return (nil, false)
+            return .dockGap(cgCursor: cgCursor)
         }
 
         let iconRect = makeCocoaIconRect(from: axRect, mainDisplayHeight: mainDisplayHeight)
 
-        return (DockTileMatch(
+        return .matched(DockTileMatch(
             agentID: agentID,
             bundleID: bundleID,
             appURL: appURL,
@@ -246,7 +291,19 @@ public final class DockLocator: @unchecked Sendable {
             axFrame: axRect,
             cgCursor: cgCursor,
             isLiveAX: true
-        ), false)
+        ))
+    }
+
+    public func performHitTest(
+        for targetAgents: [AgentID],
+        dockPID: pid_t,
+        mainDisplayHeight: CGFloat
+    ) -> (match: DockTileMatch?, hasOpenMenu: Bool) {
+        switch classifyHitTest(for: targetAgents, dockPID: dockPID, mainDisplayHeight: mainDisplayHeight) {
+        case .matched(let m): return (m, false)
+        case .openMenu: return (nil, true)
+        case .dockGap, .untrackedItem, .outsideDock: return (nil, false)
+        }
     }
 
     private func makeCocoaIconRect(from axRect: CGRect, mainDisplayHeight: CGFloat) -> NSRect {

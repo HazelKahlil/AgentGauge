@@ -8,11 +8,12 @@ window.AG_I18N = {
     "nav.styles": "Styles",
     "nav.apps": "Apps",
     "nav.film": "Film",
+    "nav.changelog": "Changelog",
     "nav.faq": "FAQ",
     "nav.download": "Download",
     "lang.switch": "中文",
 
-    "hero.eyebrow": "<b>v1.2.0</b> for macOS 26 Tahoe · 30+ AI models &amp; coding plans",
+    "hero.eyebrow": "<b>v1.2.1</b> for macOS 26 Tahoe · 30+ AI models &amp; coding plans",
     "hero.title": "Your AI quota,<br><em>as clear as water.</em>",
     "hero.sub": "AgentGauge turns every AI tool in your Dock into a living liquid gauge. Hover to see what’s left, your plan tier, API balance and reset time — for Claude, Codex, Cursor, Antigravity, DeepSeek and 30+ mainstream AI models &amp; plans.",
     "hero.cta": "Download for macOS",
@@ -88,6 +89,17 @@ window.AG_I18N = {
     "how.3.t": "Just hover",
     "how.3.d": "Your quota rises into view the moment you need it — and disappears when you don’t.",
 
+    "cl.eyebrow": "Changelog",
+    "cl.title": "Every release,<br><em>engineered in the open.</em>",
+    "cl.desc": "Following Keep a Changelog & Semantic Versioning — root causes, physics refinements and new provider integrations.",
+    "cl.gh": "View CHANGELOG.md on GitHub ↗",
+    "cl.latest": "Latest",
+    "cl.added": "Added",
+    "cl.improved": "Improved",
+    "cl.fixed": "Fixed",
+    "cl.more": "Show earlier releases (v1.1.2 – v1.1.0)",
+    "cl.less": "Hide earlier releases",
+
     "faq.eyebrow": "FAQ",
     "faq.title": "Questions, <em>answered.</em>",
     "faq.q1": "Which apps does AgentGauge support?",
@@ -105,7 +117,7 @@ window.AG_I18N = {
 
     "cta.title": "Put your AI quota<br><em>in the Dock.</em>",
     "cta.sub": "Free your attention for the work that matters.",
-    "cta.btn": "Download for macOS · v1.2.0",
+    "cta.btn": "Download for macOS · v1.2.1",
     "cta.meta": "macOS 26 Tahoe or later",
 
     "foot.tag": "Your AI quota, as clear as water.",
@@ -125,11 +137,12 @@ window.AG_I18N = {
     "nav.styles": "样式",
     "nav.apps": "支持应用",
     "nav.film": "宣传片",
+    "nav.changelog": "更新日志",
     "nav.faq": "常见问题",
     "nav.download": "下载",
     "lang.switch": "EN",
 
-    "hero.eyebrow": "<b>v1.2.0</b> 适配 macOS 26 Tahoe · 支持 30+ 主流大模型与套餐",
+    "hero.eyebrow": "<b>v1.2.1</b> 适配 macOS 26 Tahoe · 支持 30+ 主流大模型与套餐",
     "hero.title": "AI 额度，<br><em>清澈如水。</em>",
     "hero.sub": "AgentGauge 把 Dock 里的每个 AI 工具，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置倒计时——Claude、Codex、Cursor、Antigravity、DeepSeek 等 30+ 主流模型与 Coding Plan，一览无余。",
     "hero.cta": "下载 macOS 版",
@@ -205,6 +218,17 @@ window.AG_I18N = {
     "how.3.t": "悬停即可",
     "how.3.d": "需要时，额度随水位浮现；不需要时，它安静退场。",
 
+    "cl.eyebrow": "更新日志 · Changelog",
+    "cl.title": "每一次迭代，<br><em>都经得起拆解。</em>",
+    "cl.desc": "遵循 Keep a Changelog 与语义化版本规范——记录每一处根因修复、光学水波调校与厂商配额适配。",
+    "cl.gh": "在 GitHub 查看完整 CHANGELOG.md ↗",
+    "cl.latest": "最新版本",
+    "cl.added": "新增 · Added",
+    "cl.improved": "优化 · Improved",
+    "cl.fixed": "修复 · Fixed",
+    "cl.more": "展开早期版本记录 (v1.1.2 – v1.1.0)",
+    "cl.less": "收起早期版本记录",
+
     "faq.eyebrow": "常见问题",
     "faq.title": "你可能<em>想知道。</em>",
     "faq.q1": "AgentGauge 支持哪些应用？",
@@ -222,7 +246,7 @@ window.AG_I18N = {
 
     "cta.title": "把 AI 额度，<br><em>装进你的 Dock。</em>",
     "cta.sub": "把注意力，留给真正重要的工作。",
-    "cta.btn": "下载 macOS 版 · v1.2.0",
+    "cta.btn": "下载 macOS 版 · v1.2.1",
     "cta.meta": "需要 macOS 26 Tahoe 或更新版本",
 
     "foot.tag": "AI 额度，清澈如水。",
