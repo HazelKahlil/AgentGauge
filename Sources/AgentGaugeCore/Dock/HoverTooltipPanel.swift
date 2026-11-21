@@ -136,23 +136,22 @@ public final class HoverTooltipPanel {
             hostingView.layoutSubtreeIfNeeded()
         }
 
-        latestAnchorRect = anchorRect
-        latestOrientation = orientation
-        currentAgentID = snapshot.agentID
-
-        let (panelSize, cardSize) = measurePanelAndCardSize()
-        let nextTarget = computeTargetAnchor(anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
-        targetAnchor = nextTarget
-
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         if !wasVisible || orientationChanged {
-            // Fresh appearance: snap dead-center over the hovered app immediately, then spring-pop in
-            animationGeneration += 1
+            // Fresh appearance: lock dead-center directly above the hovered app, then spring-pop in
+            latestAnchorRect = anchorRect
+            latestOrientation = orientation
+            currentAgentID = snapshot.agentID
+
+            let (panelSize, cardSize) = measurePanelAndCardSize()
+            let nextTarget = computeTargetAnchor(anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
+            targetAnchor = nextTarget
             currentAnchor = nextTarget
             velocity = .zero
             hasAnchorPosition = true
             settleChecksRemaining = 6
+            animationGeneration += 1
             model.isVisibleOnScreen = false
 
             applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
@@ -164,9 +163,42 @@ public final class HoverTooltipPanel {
             }
             // Keep display link active briefly so async SwiftUI layout finalization stays centered
             ensureDisplayLinkRunning()
+        } else if switchedAgent {
+            // Switched to another app (sliding left/right or jumping across Dock):
+            // Update target ONCE to the new app's center, glide smoothly, then lock rock-solid.
+            latestAnchorRect = anchorRect
+            latestOrientation = orientation
+            currentAgentID = snapshot.agentID
+            animationGeneration += 1
+            settleChecksRemaining = 10
+
+            let (panelSize, cardSize) = measurePanelAndCardSize()
+            let nextTarget = computeTargetAnchor(anchorRect: anchorRect, orientation: orientation, cardSize: cardSize)
+            targetAnchor = nextTarget
+
+            if wasMidHide || !model.isVisibleOnScreen {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.84)) {
+                    model.isVisibleOnScreen = true
+                }
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.12
+                    panel.animator().alphaValue = 1.0
+                }
+            } else if panel.alphaValue < 0.99 {
+                panel.alphaValue = 1.0
+            }
+
+            if reduceMotion {
+                currentAnchor = nextTarget
+                velocity = .zero
+                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+                ensureDisplayLinkRunning()
+            } else {
+                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+                ensureDisplayLinkRunning()
+            }
         } else {
-            // Already visible (sliding across apps, jumping horizontally, or tracking live Dock magnification):
-            // Continuously glide from currentAnchor -> targetAnchor without ever cancelling on resize!
+            // Staying on the SAME app: keep anchor position 100% locked (zero mouse/magnification wobble!)
             if wasMidHide || !model.isVisibleOnScreen {
                 animationGeneration += 1
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.84)) {
@@ -180,21 +212,15 @@ public final class HoverTooltipPanel {
                 panel.alphaValue = 1.0
             }
 
-            if switchedAgent {
-                animationGeneration += 1
-                settleChecksRemaining = 10
-            } else if contentChanged {
+            if contentChanged {
+                let (panelSize, cardSize) = measurePanelAndCardSize()
+                targetAnchor = computeTargetAnchor(
+                    anchorRect: latestAnchorRect,
+                    orientation: latestOrientation,
+                    cardSize: cardSize
+                )
                 settleChecksRemaining = max(settleChecksRemaining, 6)
-            }
-
-            if reduceMotion {
-                currentAnchor = nextTarget
-                velocity = .zero
-                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
-                ensureDisplayLinkRunning()
-            } else {
-                // Immediately apply updated size/clamping around current smoothly gliding anchor and drive 120Hz spring
-                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: orientation)
+                applyPanelFrame(anchor: currentAnchor, panelSize: panelSize, cardSize: cardSize, orientation: latestOrientation)
                 ensureDisplayLinkRunning()
             }
         }

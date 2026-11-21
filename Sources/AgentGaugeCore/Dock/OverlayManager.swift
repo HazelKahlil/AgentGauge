@@ -565,9 +565,18 @@ public final class OverlayManager {
            let snap = snapshots[hm.agentID],
            snap.remainingPercent != nil {
             let accent = customWaterColors[hm.agentID].flatMap(NSColor.fromHex) ?? hm.agentID.defaultAccentColor
+            // Prefer stationary unmagnified Dock tile geometry when close so all icons share one calm horizontal rail
+            // and never inherit magnification wobble from cursor micro-movements.
+            let anchorRect: NSRect
+            if let base = cachedDockTiles.first(where: { $0.agentID == hm.agentID }),
+               hypot(base.cocoaFrame.midX - hm.cocoaFrame.midX, base.cocoaFrame.midY - hm.cocoaFrame.midY) <= 44 {
+                anchorRect = base.cocoaFrame
+            } else {
+                anchorRect = hm.cocoaFrame
+            }
             tooltipPanel.show(
                 snapshot: snap,
-                anchorRect: hm.cocoaFrame,
+                anchorRect: anchorRect,
                 orientation: orientation,
                 detailMode: tooltipDetailMode,
                 showPercentageSign: showPercentageSign,
