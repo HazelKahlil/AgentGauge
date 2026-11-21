@@ -1,0 +1,165 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Apple macOS Ambient Drop Shadow -->
+    <filter id="dockShadow" x="36" y="48" width="952" height="952" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
+
+    <!-- Soft Sub-Meniscus Glow -->
+    <filter id="meniscusGlow" x="60" y="460" width="904" height="220" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+    </filter>
+
+    <!-- Squircle Clip Path (Exact Apple 824/1024 Grid) -->
+    <clipPath id="squircleClip">
+      <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4"/>
+    </clipPath>
+
+    <!-- Deep Obsidian-Sapphire Crystal Vessel Base -->
+    <linearGradient id="vesselBase" x1="220" y1="100" x2="780" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22304A"/>
+      <stop offset="42%" stop-color="#111A2E"/>
+      <stop offset="100%" stop-color="#070C18"/>
+    </linearGradient>
+
+    <!-- Ambient Inner Sky Reflection -->
+    <radialGradient id="topFresnel" cx="360" cy="150" r="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#93C5FD" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#3B82F6" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Back Translucent Liquid Wave -->
+    <linearGradient id="backWaveGrad" x1="512" y1="468" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7DD3FC" stop-opacity="0.68"/>
+      <stop offset="45%" stop-color="#3B82F6" stop-opacity="0.62"/>
+      <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.78"/>
+    </linearGradient>
+
+    <!-- Front Deep Optical Liquid Wave -->
+    <linearGradient id="frontWaveGrad" x1="512" y1="510" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.92"/>
+      <stop offset="32%" stop-color="#2563EB" stop-opacity="0.95"/>
+      <stop offset="78%" stop-color="#1D4ED8" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
+    </linearGradient>
+
+    <!-- Bottom Underwater Caustic Light Pool -->
+    <radialGradient id="bottomCaustic" cx="512" cy="896" r="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#67E8F9" stop-opacity="0.52"/>
+      <stop offset="48%" stop-color="#38BDF8" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Front Meniscus Specular Ribbon -->
+    <linearGradient id="crestSpec" x1="100" y1="540" x2="924" y2="540" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E0F2FE" stop-opacity="0.72"/>
+      <stop offset="28%" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="68%" stop-color="#BAE6FD" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.80"/>
+    </linearGradient>
+
+    <!-- Bubble Optical Sphere Fill -->
+    <radialGradient id="bubbleSphere" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.65"/>
+      <stop offset="38%" stop-color="#BAE6FD" stop-opacity="0.22"/>
+      <stop offset="78%" stop-color="#1E40AF" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#E0F2FE" stop-opacity="0.58"/>
+    </radialGradient>
+
+    <!-- Outer Titanium-Crystal Bevel Stroke -->
+    <linearGradient id="rimBevel" x1="120" y1="100" x2="904" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.58"/>
+      <stop offset="35%" stop-color="#93C5FD" stop-opacity="0.24"/>
+      <stop offset="70%" stop-color="#38BDF8" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#7DD3FC" stop-opacity="0.46"/>
+    </linearGradient>
+
+    <!-- Inner Glass Wall Rim -->
+    <linearGradient id="innerRim" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.26"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Shadowed Outer Vessel -->
+  <g filter="url(#dockShadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4" fill="url(#vesselBase)"/>
+  </g>
+
+  <!-- Clipped Optical Interior -->
+  <g clip-path="url(#squircleClip)">
+    <!-- Base & Top Studio Fresnel Reflection -->
+    <rect x="100" y="100" width="824" height="824" fill="url(#vesselBase)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#topFresnel)"/>
+
+    <!-- Studio Glass Specular Crown Arc -->
+    <ellipse cx="410" cy="142" rx="390" ry="128" fill="#FFFFFF" fill-opacity="0.065"/>
+
+    <!-- Subtle Precision Etched Gauge Scale (Right Inner Glass Wall) -->
+    <g opacity="0.72">
+      <line x1="846" y1="286" x2="876" y2="286" stroke="#94A3B8" stroke-opacity="0.36" stroke-width="6" stroke-linecap="round"/>
+      <line x1="856" y1="399" x2="876" y2="399" stroke="#94A3B8" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round"/>
+      <line x1="836" y1="512" x2="876" y2="512" stroke="#38BDF8" stroke-opacity="0.82" stroke-width="7" stroke-linecap="round"/>
+      <line x1="856" y1="625" x2="876" y2="625" stroke="#BAE6FD" stroke-opacity="0.38" stroke-width="5" stroke-linecap="round"/>
+      <line x1="846" y1="738" x2="876" y2="738" stroke="#BAE6FD" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+    </g>
+
+    <!-- Back Wave (Counter-Phase Translucent Layer) -->
+    <path d="M 80 518 C 235 442, 392 456, 538 516 C 684 576, 812 562, 944 486 L 944 944 L 80 944 Z"
+          fill="url(#backWaveGrad)"/>
+    <path d="M 80 518 C 235 442, 392 456, 538 516 C 684 576, 812 562, 944 486"
+          stroke="#E0F2FE" stroke-opacity="0.62" stroke-width="4.5" stroke-linecap="round"/>
+
+    <!-- Front Wave Sub-Surface Glow -->
+    <path d="M 80 566 C 246 638, 412 618, 560 542 C 708 466, 828 492, 944 554"
+          stroke="#7DD3FC" stroke-opacity="0.55" stroke-width="18" filter="url(#meniscusGlow)"/>
+
+    <!-- Front Wave (Primary Deep Refractive Liquid Glass) -->
+    <path d="M 80 566 C 246 638, 412 618, 560 542 C 708 466, 828 492, 944 554 L 944 944 L 80 944 Z"
+          fill="url(#frontWaveGrad)"/>
+
+    <!-- Underwater Caustic Light Bloom -->
+    <rect x="100" y="520" width="824" height="404" fill="url(#bottomCaustic)"/>
+
+    <!-- Inner Glass Wall Refraction Vignette -->
+    <rect x="114" y="114" width="796" height="796" rx="172" ry="172"
+          stroke="url(#innerRim)" stroke-width="12"/>
+
+    <!-- 3D Glossy Front Wave Meniscus Crest -->
+    <path d="M 80 572 C 246 644, 412 624, 560 548 C 708 472, 828 498, 944 560"
+          stroke="#0284C7" stroke-opacity="0.38" stroke-width="10"/>
+    <path d="M 80 566 C 246 638, 412 618, 560 542 C 708 466, 828 492, 944 554"
+          stroke="url(#crestSpec)" stroke-width="6.5" stroke-linecap="round"/>
+
+    <!-- Refracting Spherical Micro-Bubbles -->
+    <!-- Bubble 1 (Primary Left-Center Lens) -->
+    <g transform="translate(336, 742)">
+      <circle cx="0" cy="0" r="34" fill="url(#bubbleSphere)" stroke="#E0F2FE" stroke-opacity="0.78" stroke-width="3"/>
+      <ellipse cx="-11" cy="-12" rx="10" ry="6.5" transform="rotate(-28 -11 -12)" fill="#FFFFFF" fill-opacity="0.88"/>
+      <path d="M 10 22 A 24 24 0 0 0 23 6" stroke="#7DD3FC" stroke-opacity="0.72" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Bubble 2 (Mid-Right Rising Sphere) -->
+    <g transform="translate(658, 678)">
+      <circle cx="0" cy="0" r="23" fill="url(#bubbleSphere)" stroke="#E0F2FE" stroke-opacity="0.74" stroke-width="2.5"/>
+      <ellipse cx="-7.5" cy="-8" rx="6.8" ry="4.2" transform="rotate(-28 -7.5 -8)" fill="#FFFFFF" fill-opacity="0.86"/>
+    </g>
+
+    <!-- Bubble 3 (Lower Center Pearl) -->
+    <g transform="translate(524, 812)">
+      <circle cx="0" cy="0" r="16" fill="url(#bubbleSphere)" stroke="#E0F2FE" stroke-opacity="0.68" stroke-width="2.2"/>
+      <circle cx="-5" cy="-5.5" r="3.8" fill="#FFFFFF" fill-opacity="0.85"/>
+    </g>
+
+    <!-- Bubble 4 & 5 (Delicate Effervescence Micro-Pearls) -->
+    <circle cx="438" cy="668" r="9.5" fill="#E0F2FE" fill-opacity="0.28" stroke="#FFFFFF" stroke-opacity="0.68" stroke-width="1.8"/>
+    <circle cx="716" cy="786" r="11" fill="#E0F2FE" fill-opacity="0.25" stroke="#FFFFFF" stroke-opacity="0.62" stroke-width="1.8"/>
+    <circle cx="268" cy="828" r="7.5" fill="#FFFFFF" fill-opacity="0.52"/>
+  </g>
+
+  <!-- Crisp Outer Titanium-Glass Bevel Border -->
+  <rect x="102" y="102" width="820" height="820" rx="183.4" ry="183.4"
+        stroke="url(#rimBevel)" stroke-width="4"/>
+</svg>

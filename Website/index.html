@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AgentGauge — Your AI quota, as clear as water</title>
+  <meta name="description" content="AgentGauge turns every AI app in your Mac's Dock into a living liquid gauge." />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="canonical" href="https://usage.komorebi.date/" />
+  <meta property="og:url" content="https://usage.komorebi.date/" />
+  <meta property="og:title" content="AgentGauge — Your AI quota, as clear as water" />
+  <meta property="og:description" content="AgentGauge turns every AI app in your Mac's Dock into a living liquid gauge. Supporting 50 AI apps & coding agents." />
+  <meta property="og:image" content="https://usage.komorebi.date/assets/media/film-poster.jpg" />
+  <link rel="icon" type="image/png" href="assets/icons/agentgauge.png" />
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+  <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700&display=swap" />
+  <link rel="stylesheet" href="css/site.css" />
+</head>
+<body>
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="wrap nav-row">
+      <a class="brand" href="#top" aria-label="AgentGauge">
+        <img src="assets/icons/agentgauge.png" alt="" width="30" height="30" />
+        <span>AgentGauge</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#lab" data-i18n="nav.lab">Liquid Lab</a>
+        <a href="#styles" data-i18n="nav.styles">Styles</a>
+        <a href="#apps" data-i18n="nav.apps">Apps</a>
+        <a href="#film" data-i18n="nav.film">Film</a>
+        <a href="#faq" data-i18n="nav.faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="lang-btn" type="button" data-lang-toggle aria-label="Switch language">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg>
+          <span data-i18n="lang.switch">中文</span>
+        </button>
+        <a class="btn btn-ink btn-sm" href="#download" data-download>
+          <svg class="apple" viewBox="0 0 18 22" aria-hidden="true"><path d="M14.7 11.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8-.7 0-1.9-.8-3.1-.8-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.3-.9-2.3-3.6zM12.3 4.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>
+          <span data-i18n="nav.download">Download</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="wrap">
+        <div class="hero-head">
+          <p class="pill-eyebrow reveal"><span class="dot"></span><span data-i18n="hero.eyebrow"><b>v1.1.0</b> for macOS 26 Tahoe · 50 apps supported</span></p>
+          <h1 class="display hero-title reveal" data-i18n="hero.title">Your AI quota,<br><em>as clear as water.</em></h1>
+          <div class="hero-side reveal">
+            <p class="lead" data-i18n="hero.sub"></p>
+            <div class="cta-row">
+              <a class="btn btn-ink" href="#download" data-download>
+                <svg class="apple" viewBox="0 0 18 22" aria-hidden="true"><path d="M14.7 11.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8-.7 0-1.9-.8-3.1-.8-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.3-.9-2.3-3.6zM12.3 4.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>
+                <span data-i18n="hero.cta">Download for macOS</span>
+              </a>
+              <button class="btn btn-ghost" type="button" data-film-open>
+                <span class="play-dot"><svg viewBox="0 0 10 12"><path d="M0 0l10 6-10 6z"/></svg></span>
+                <span data-i18n="hero.film">Watch the film</span>
+                <span class="muted mono" data-i18n="hero.filmLen">62s</span>
+              </button>
+            </div>
+            <p class="micro" data-i18n="hero.meta"></p>
+          </div>
+        </div>
+
+        <!-- Live macOS stage -->
+        <div class="stage-frame reveal" id="demo">
+          <div class="stage" id="stage">
+            <div class="stage-inner" id="stageInner">
+              <img class="stage-wall on" id="wallA" src="assets/wallpapers/monet-water-lilies.jpg" alt="" draggable="false" />
+              <img class="stage-wall" id="wallB" src="assets/wallpapers/heade-point-judith.jpg" alt="" draggable="false" />
+              <div class="stage-scrim" aria-hidden="true"></div>
+
+              <div class="mb">
+                <div class="mb-left">
+                  <svg class="mb-apple" viewBox="0 0 18 22"><path d="M14.7 11.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8-.7 0-1.9-.8-3.1-.8-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.3-.9-2.3-3.6zM12.3 4.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>
+                  <b id="mbFinder">Finder</b>
+                  <span class="mb-menus" id="mbMenus"></span>
+                </div>
+                <div class="mb-right">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 010 7M18.8 5.8a9 9 0 010 12.4" stroke-linecap="round"/></svg>
+                  <button class="mb-gauge" id="mbGauge" type="button" aria-label="AgentGauge menu bar">
+                    <svg viewBox="0 0 18 18" fill="none"><defs><clipPath id="mbc"><rect x="2.95" y="2.95" width="12.1" height="12.1" rx="2.5"/></clipPath></defs><rect x="1.8" y="1.8" width="14.4" height="14.4" rx="3.6" stroke="currentColor" stroke-width="1.4"/><g clip-path="url(#mbc)"><path d="M2.2 8.2C6.2 6.2 11.2 10.2 15.8 8.4" stroke="currentColor" stroke-opacity=".5" stroke-width="1.05"/><path fill-rule="evenodd" fill="currentColor" d="M2 16V9.8c4.4 1.8 9.4-2.4 14-.4V16zM5.5 12.75a1.15 1.15 0 102.3 0 1.15 1.15 0 10-2.3 0z"/></g></svg>
+                  </button>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0114 0M8.5 16a5.5 5.5 0 017 0"/><circle cx="12" cy="19.5" r="1.4" fill="currentColor" stroke="none"/></svg>
+                  <svg viewBox="0 0 28 20" fill="none" class="mb-batt"><rect x="1.5" y="4" width="21" height="12" rx="3" stroke="currentColor" stroke-width="1.6"/><rect x="3.8" y="6.3" width="16.4" height="7.4" rx="1.5" fill="currentColor"/><path d="M24 8v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="6.5" rx="3.25" stroke="currentColor" stroke-width="1.6"/><circle cx="16.2" cy="7.25" r="2.1" fill="currentColor"/><rect x="3" y="13.5" width="18" height="6.5" rx="3.25" stroke="currentColor" stroke-width="1.6"/><circle cx="7.8" cy="16.75" r="2.1" fill="currentColor"/></svg>
+                  <span class="mb-clock" id="mbClock">Fri 18:30</span>
+                </div>
+              </div>
+
+              <!-- Live interactive macOS 26 Menu Bar Popover -->
+              <div class="pop" id="pop" aria-hidden="true">
+                <div class="pop-glass" id="popGlass">
+                  <div class="mbp-mount" id="stagePopMount"></div>
+                </div>
+                <svg class="pop-rim" width="448" height="356" viewBox="0 0 448 356" aria-hidden="true">
+                  <path id="popRimPath" d="" fill="none" stroke="rgba(255,255,255,0.17)" stroke-width="1.15" stroke-linejoin="round" />
+                </svg>
+              </div>
+
+              <!-- Live interactive macOS 26 Hover Tooltip Card -->
+              <div class="tips" id="tips">
+                <div class="htc" id="liveTip" aria-hidden="true"></div>
+              </div>
+              <div class="dock-label" id="dockLabel"></div>
+
+              <!-- Museum painting plaque & switcher -->
+              <button class="wall-plaque" type="button" id="wallPlaque" aria-label="Switch desktop painting">
+                <span class="wall-dot" aria-hidden="true"></span>
+                <span class="wall-meta" id="wallMeta">Claude Monet · Water Lilies</span>
+                <span class="wall-next" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.2 8a5.2 5.2 0 11-1.5-3.7M13.2 2.9v2.8h-2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
+
+              <!-- Dock -->
+              <div class="dock" id="dock"></div>
+            </div>
+          </div>
+          <p class="stage-hint"><span class="pulse"></span><span data-i18n="hero.hint"></span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LOGO STRIP ============ -->
+    <section class="strip" aria-label="Supported apps">
+      <p class="strip-label mono" data-i18n="strip.label"></p>
+      <div class="marquee"><div class="marquee-track" id="marquee"></div></div>
+    </section>
+
+    <!-- ============ MANIFESTO ============ -->
+    <section class="manifesto">
+      <div class="wrap">
+        <p class="manifesto-text reveal" data-i18n="manifesto.text"></p>
+        <div class="numbers reveal">
+          <div><span class="num display" data-count="50">50</span><span class="num-l" data-i18n="manifesto.n1"></span></div>
+          <div><span class="num display">1.7</span><span class="num-l" data-i18n="manifesto.n2"></span></div>
+          <div><span class="num display">0%</span><span class="num-l" data-i18n="manifesto.n3"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LIQUID LAB ============ -->
+    <section class="lab" id="lab">
+      <div class="wrap lab-grid">
+        <div class="lab-copy">
+          <p class="eyebrow reveal" data-i18n="lab.eyebrow"></p>
+          <h2 class="display h2 reveal" data-i18n="lab.title"></h2>
+          <p class="lead reveal" data-i18n="lab.desc"></p>
+
+          <div class="controls reveal">
+            <div class="ctl">
+              <span class="ctl-l" data-i18n="lab.app"></span>
+              <div class="chips" id="labApps" role="radiogroup"></div>
+            </div>
+            <div class="ctl">
+              <span class="ctl-l"><span data-i18n="lab.level"></span><output id="labLevelOut" class="mono">69%</output></span>
+              <div class="range-row">
+                <input type="range" id="labLevel" min="4" max="100" value="69" aria-label="Remaining quota" />
+                <button class="btn-mini" type="button" id="labDrain"><span data-i18n="lab.drain"></span></button>
+              </div>
+            </div>
+            <div class="ctl">
+              <span class="ctl-l" data-i18n="lab.style"></span>
+              <div class="seg" id="labStyle" role="radiogroup">
+                <button type="button" data-style="split" class="on" data-i18n="lab.split"></button>
+                <button type="button" data-style="pill" data-i18n="lab.pill"></button>
+                <span class="seg-thumb" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lab-stage reveal">
+          <div class="lab-tile" id="labTile">
+            <canvas id="labCanvas" aria-label="Live liquid glass icon"></canvas>
+            <img id="labFallback" alt="" hidden />
+          </div>
+          <p class="lab-hint mono"><span class="pulse"></span><span data-i18n="lab.hint"></span></p>
+        </div>
+      </div>
+      <div class="wrap lab-stats reveal">
+        <div><b class="display">≈1.7<small>ms</small></b><span data-i18n="lab.s1"></span></div>
+        <div><b class="display">2×<small>Retina</small></b><span data-i18n="lab.s2"></span></div>
+        <div><b class="display">0<small>%</small></b><span data-i18n="lab.s3"></span></div>
+        <p class="lab-note mono" data-i18n="lab.note"></p>
+      </div>
+    </section>
+
+    <!-- ============ FEATURES (BENTO) ============ -->
+    <section class="features" id="features">
+      <div class="wrap">
+        <div class="sec-head">
+          <p class="eyebrow ink reveal" data-i18n="feat.eyebrow"></p>
+          <h2 class="display h2 reveal" data-i18n="feat.title"></h2>
+        </div>
+
+        <div class="bento">
+          <article class="card card-hover reveal">
+            <div class="card-art art-matte bento-hover-art" id="bentoHoverArt">
+              <div class="bento-tip-wrap" id="bentoTipWrap">
+                <div class="htc htc-static on" id="bentoTip"></div>
+              </div>
+              <div class="mini-dock" id="bentoMiniDock" role="tablist" aria-label="Preview app hover card"></div>
+            </div>
+            <div class="card-copy"><h3 data-i18n="feat.hover.t"></h3><p data-i18n="feat.hover.d"></p></div>
+          </article>
+
+          <article class="card card-menu reveal">
+            <div class="card-art art-matte bento-pop-art" id="bentoPopArt">
+              <div class="bento-pop-scale" id="bentoPopScale">
+                <div class="mbp-mount" id="bentoPopMount"></div>
+              </div>
+            </div>
+            <div class="card-copy"><h3 data-i18n="feat.menu.t"></h3><p data-i18n="feat.menu.d"></p></div>
+          </article>
+
+          <article class="card card-dodge reveal">
+            <div class="card-art art-deep" id="dodgeArt">
+              <canvas id="dodgeCanvas" width="512" height="512" aria-label="Low-water auto dodge demo"></canvas>
+              <div class="dodge-meter"><span id="dodgeVal" class="mono">64%</span><i><b id="dodgeBar"></b></i></div>
+            </div>
+            <div class="card-copy"><h3 data-i18n="feat.dodge.t"></h3><p data-i18n="feat.dodge.d"></p></div>
+          </article>
+
+          <article class="card card-settings reveal" id="settingsCard">
+            <div class="card-art art-matte bento-win-art" id="bentoWinArt">
+              <img class="shot-settings" src="assets/shots/settings.png" alt="AgentGauge settings window" loading="lazy" />
+              <img class="shot-studio" src="assets/shots/studio.png" alt="Badge style studio" loading="lazy" />
+            </div>
+            <div class="card-copy"><h3 data-i18n="feat.settings.t"></h3><p data-i18n="feat.settings.d"></p></div>
+          </article>
+
+          <article class="card card-idle reveal">
+            <div class="idle-viz" aria-hidden="true">
+              <svg viewBox="0 0 300 90" preserveAspectRatio="none"><path id="idlePath" d="" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+            </div>
+            <div class="card-copy"><span class="big display">0<small>%</small></span><h3 data-i18n="feat.idle.t"></h3><p data-i18n="feat.idle.d"></p></div>
+          </article>
+
+          <article class="card card-private reveal">
+            <div class="lock" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="12" y="28" width="40" height="28" rx="9"/><path d="M21 28v-6a11 11 0 0122 0v6"/><path d="M32 39v7" stroke-linecap="round"/></svg>
+            </div>
+            <div class="card-copy"><h3 data-i18n="feat.private.t"></h3><p data-i18n="feat.private.d"></p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STYLES ============ -->
+    <section class="styles" id="styles">
+      <div class="wrap">
+        <div class="sec-head split">
+          <div>
+            <p class="eyebrow reveal" data-i18n="styles.eyebrow"></p>
+            <h2 class="display h2 reveal" data-i18n="styles.title"></h2>
+          </div>
+          <p class="lead reveal" data-i18n="styles.desc"></p>
+        </div>
+        <div class="style-grid" id="styleGrid"></div>
+      </div>
+    </section>
+
+    <!-- ============ FILM ============ -->
+    <section class="film" id="film">
+      <div class="wrap">
+        <div class="sec-head center">
+          <p class="eyebrow ink reveal" data-i18n="film.eyebrow"></p>
+          <h2 class="display h2 reveal" data-i18n="film.title"></h2>
+          <p class="lead reveal" data-i18n="film.desc"></p>
+        </div>
+        <div class="film-frame reveal">
+          <video id="filmVideo" src="assets/media/agentgauge-film.mp4" poster="assets/media/film-poster.jpg" preload="none" playsinline controls></video>
+          <button class="film-play" type="button" id="filmPlay" aria-label="Play film">
+            <i><svg viewBox="0 0 10 12"><path d="M0 0l10 6-10 6z"/></svg></i>
+            <span data-i18n="hero.film">Watch the film</span><span class="muted mono" data-i18n="hero.filmLen">62s</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ APPS ============ -->
+    <section class="apps" id="apps">
+      <div class="wrap">
+        <div class="sec-head split">
+          <div>
+            <p class="eyebrow ink reveal" data-i18n="apps.eyebrow"></p>
+            <h2 class="display h2 reveal" data-i18n="apps.title"></h2>
+          </div>
+          <div class="reveal">
+            <p class="lead" data-i18n="apps.desc"></p>
+            <div class="filters" id="appFilters"></div>
+          </div>
+        </div>
+        <ul class="app-grid" id="appGrid"></ul>
+      </div>
+    </section>
+
+    <!-- ============ HOW ============ -->
+    <section class="how">
+      <div class="wrap">
+        <div class="sec-head">
+          <p class="eyebrow ink reveal" data-i18n="how.eyebrow"></p>
+          <h2 class="display h2 reveal" data-i18n="how.title"></h2>
+        </div>
+        <ol class="steps">
+          <li class="reveal"><span class="step-n mono">01</span><h3 data-i18n="how.1.t"></h3><p data-i18n="how.1.d"></p></li>
+          <li class="reveal"><span class="step-n mono">02</span><h3 data-i18n="how.2.t"></h3><p data-i18n="how.2.d"></p></li>
+          <li class="reveal"><span class="step-n mono">03</span><h3 data-i18n="how.3.t"></h3><p data-i18n="how.3.d"></p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="faq" id="faq">
+      <div class="wrap faq-grid">
+        <div class="sec-head">
+          <p class="eyebrow ink reveal" data-i18n="faq.eyebrow"></p>
+          <h2 class="display h2 reveal" data-i18n="faq.title"></h2>
+        </div>
+        <div class="faq-list reveal">
+          <details><summary data-i18n="faq.q1"></summary><p data-i18n="faq.a1"></p></details>
+          <details><summary data-i18n="faq.q2"></summary><p data-i18n="faq.a2"></p></details>
+          <details><summary data-i18n="faq.q3"></summary><p data-i18n="faq.a3"></p></details>
+          <details><summary data-i18n="faq.q4"></summary><p data-i18n="faq.a4"></p></details>
+          <details><summary data-i18n="faq.q5"></summary><p data-i18n="faq.a5"></p></details>
+          <details><summary data-i18n="faq.q6"></summary><p data-i18n="faq.a6"></p></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FINAL CTA ============ -->
+    <section class="cta" id="download">
+      <div class="wrap cta-inner">
+        <img class="cta-icon reveal" src="assets/icons/agentgauge.png" alt="" width="120" height="120" />
+        <h2 class="display cta-title reveal" data-i18n="cta.title"></h2>
+        <p class="lead reveal" data-i18n="cta.sub"></p>
+        <div class="cta-row center reveal">
+          <a class="btn btn-ink btn-lg" href="#download" data-download>
+            <svg class="apple" viewBox="0 0 18 22" aria-hidden="true"><path d="M14.7 11.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8-.7 0-1.9-.8-3.1-.8-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.3-.9-2.3-3.6zM12.3 4.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3z"/></svg>
+            <span data-i18n="cta.btn"></span>
+          </a>
+        </div>
+        <p class="micro reveal" data-i18n="cta.meta"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="foot">
+    <div class="wrap foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top"><img src="assets/icons/agentgauge.png" alt="" width="28" height="28" /><span>AgentGauge</span></a>
+        <p class="display foot-tag" data-i18n="foot.tag"></p>
+      </div>
+      <div>
+        <h4 data-i18n="foot.product"></h4>
+        <a href="#features" data-i18n="nav.features"></a>
+        <a href="#lab" data-i18n="nav.lab"></a>
+        <a href="#styles" data-i18n="nav.styles"></a>
+        <a href="#apps" data-i18n="nav.apps"></a>
+      </div>
+      <div>
+        <h4 data-i18n="foot.resources"></h4>
+        <a href="#film" data-i18n="nav.film"></a>
+        <a href="#faq" data-i18n="nav.faq"></a>
+        <a href="#download" data-download data-i18n="nav.download"></a>
+        <button class="link-btn" type="button" data-lang-toggle><span data-i18n="lang.switch"></span></button>
+      </div>
+    </div>
+    <div class="wrap foot-base">
+      <span data-i18n="foot.rights"></span>
+      <span data-i18n="foot.note"></span>
+    </div>
+  </footer>
+
+  <!-- Film modal -->
+  <div class="modal" id="filmModal" hidden>
+    <div class="modal-back" data-film-close></div>
+    <div class="modal-body">
+      <video id="modalVideo" src="assets/media/agentgauge-film.mp4" poster="assets/media/film-poster.jpg" playsinline controls preload="none"></video>
+      <button class="modal-x" type="button" data-film-close aria-label="Close">×</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>window.AG_CONFIG = { downloadUrl: "downloads/AgentGauge-v1.1.0-macOS.dmg", fileName: "AgentGauge-v1.1.0-macOS.dmg", version: "1.1.0" };</script>
+  <script src="js/i18n.js"></script>
+  <script src="js/liquid.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# macOS & Swift
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+.DS_Store
+
+# Promo video build & heavy intermediates
+Promo/node_modules/
+Promo/out/
+Promo/public/seq/
+Promo/audio/soundtrack.wav
+
+# Binary installer artifacts (attached to GitHub Releases & Cloudflare Pages)
+Website/downloads/*.dmg
+Website/downloads/*.zip
+
+# Cloudflare Wrangler cache
+.wrangler/
