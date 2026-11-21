@@ -7,7 +7,7 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const I18N = window.AG_I18N;
-  const ASSET_V = "1.2.2";
+  const ASSET_V = "1.2.4";
   const ICON = (id) => `assets/icons/${id}.png?v=${ASSET_V}`;
 
   /* ------------------------------------------------------------------ 29 authentic Coding-Plan & Foundation-Model vendors */
@@ -561,8 +561,17 @@
   /* ================================================================== HERO STAGE */
   const stage = $("#stage");
   const inner = $("#stageInner");
-  let stageScale = 1;
-  function fitStage() { stageScale = (stage.clientWidth || 1240) / 1240; inner.style.transform = `scale(${stageScale})`; }
+  const pop = $("#pop");
+  const isCompactStage = () => window.matchMedia("(max-width: 720px), (hover: none)").matches;
+  const stageLogicalW = () => inner.offsetWidth || 1240;
+  let stageScale = 1, activeDock = null, hideTipTimer = 0;
+  function fitStage() {
+    const lw = stageLogicalW();
+    stageScale = (stage.clientWidth || lw) / lw;
+    inner.style.transform = `scale(${stageScale})`;
+    if (pop.classList.contains("open")) placePop();
+    if (activeDock) positionDockOverlay(activeDock);
+  }
   new ResizeObserver(fitStage).observe(stage);
 
   // Curated 10 classical paintings: shuffled random deck + smooth crossfade
@@ -642,6 +651,7 @@
     const item = document.createElement("div");
     item.className = "dock-item";
     item.dataset.id = id;
+    if (!DEMO[id]) item.dataset.sys = "1";
     item.innerHTML = `<img src="${ICON(id)}" alt="" draggable="false" />`;
     if (DEMO[id]) {
       const c = document.createElement("canvas");
@@ -658,10 +668,31 @@
     return { x: (r.left - s.left) / stageScale, y: (r.top - s.top) / stageScale, w: r.width / stageScale, h: r.height / stageScale };
   };
 
-  let activeDock = null, hideTipTimer = 0;
+  function positionDockOverlay(id) {
+    const item = dockEl.querySelector(`[data-id="${id}"]`);
+    if (!item || !item.offsetWidth) {
+      setDockActive(null);
+      updateDockMagnification(null);
+      return false;
+    }
+    const b = toStage(item);
+    const cx = b.x + b.w / 2;
+    labelEl.style.setProperty("--lx", `${cx}px`);
+    if (SNAPSHOTS[id]) {
+      const w = liveTip.offsetWidth || 320;
+      const tx = Math.round(clamp(cx - w / 2, 10, stageLogicalW() - w - 10));
+      liveTip.style.setProperty("--tx", `${tx}px`);
+    }
+    return true;
+  }
+
   function setDockActive(id) {
     clearTimeout(hideTipTimer);
     if (activeDock === id) return;
+    if (id) {
+      const checkItem = dockEl.querySelector(`[data-id="${id}"]`);
+      if (!checkItem || !checkItem.offsetWidth) id = null;
+    }
     activeDock = id;
     Object.entries(dockTiles).forEach(([k, d]) => {
       if (d.motion) d.motion.target = k === id ? 1 : 0;
@@ -675,34 +706,36 @@
       ensureLoop();
       return;
     }
-    const item = dockEl.querySelector(`[data-id="${id}"]`);
-    const b = toStage(item);
-    const cx = b.x + b.w / 2;
     const name = DEMO[id] ? DEMO[id].name : appName(SYS_LABEL[id] || id);
     labelEl.textContent = name;
-    labelEl.style.setProperty("--lx", `${cx}px`);
     labelEl.classList.add("on");
 
     if (SNAPSHOTS[id]) {
       liveTip.innerHTML = renderHoverCardHTML(id);
-      const w = liveTip.offsetWidth || 336;
-      const tx = Math.round(clamp(cx - w / 2, 12, 1240 - w - 12));
-      liveTip.style.setProperty("--tx", `${tx}px`);
+      positionDockOverlay(id);
       liveTip.classList.add("on");
       liveTip.setAttribute("aria-hidden", "false");
       const d = dockTiles[id];
       if (d && d.motion) d.motion.kick((Math.random() > 0.5 ? 1 : -1) * 0.65);
     } else {
+      positionDockOverlay(id);
       liveTip.classList.remove("on");
       liveTip.setAttribute("aria-hidden", "true");
     }
     ensureLoop();
   }
-  langListeners.push(() => { if (activeDock && SNAPSHOTS[activeDock]) liveTip.innerHTML = renderHoverCardHTML(activeDock); });
+  langListeners.push(() => {
+    if (activeDock) {
+      const name = DEMO[activeDock] ? DEMO[activeDock].name : appName(SYS_LABEL[activeDock] || activeDock);
+      labelEl.textContent = name;
+      if (SNAPSHOTS[activeDock]) liveTip.innerHTML = renderHoverCardHTML(activeDock);
+      positionDockOverlay(activeDock);
+    }
+  });
 
   function updateDockMagnification(stageX) {
     dockItemEls.forEach((item) => {
-      if (stageX === null) {
+      if (!item.offsetWidth || stageX === null) {
         item.style.setProperty("--ms", "1");
         item.style.setProperty("--dy", "0px");
         return;
@@ -710,15 +743,22 @@
       const b = toStage(item);
       const dist = Math.abs(stageX - (b.x + b.w / 2));
       const g = Math.exp(-(dist * dist) / (2 * 50 * 50));
-      const scale = 1 + 0.2 * g;
-      const dy = -13 * g;
+      const scale = 1 + 0.18 * g;
+      const dy = -11 * g;
       item.style.setProperty("--ms", scale.toFixed(3));
       item.style.setProperty("--dy", `${dy.toFixed(1)}px`);
     });
   }
 
+  function focusDockItem(id) {
+    const item = dockEl.querySelector(`[data-id="${id}"]`);
+    if (!item || !item.offsetWidth) return;
+    const b = toStage(item);
+    updateDockMagnification(b.x + b.w / 2);
+    setDockActive(id);
+  }
+
   // Hero Stage Menu Bar Popover (seamless single-contour macOS NSPopover geometry)
-  const pop = $("#pop");
   const popGlass = $("#popGlass");
   const popRimPath = $("#popRimPath");
   const gauge = $("#mbGauge");
@@ -732,7 +772,7 @@
 
   function placePop() {
     const g = toStage(gauge);
-    const left = clamp(g.x + g.w / 2 - 224, 8, 1240 - 448 - 8);
+    const left = clamp(g.x + g.w / 2 - 224, 8, stageLogicalW() - 448 - 8);
     const cx = g.x + g.w / 2 - left;
     pop.style.left = `${left}px`;
     pop.style.setProperty("--pop-ox", `${((cx / 448) * 100).toFixed(1)}%`);
@@ -742,6 +782,10 @@
     popRimPath.setAttribute("d", d);
   }
   function setPop(open) {
+    if (open && isCompactStage()) {
+      setDockActive(null);
+      updateDockMagnification(null);
+    }
     placePop();
     pop.classList.toggle("open", open);
     gauge.classList.toggle("on", open);
@@ -755,7 +799,8 @@
   });
 
   let gaugeHoverTimer = 0;
-  gauge.addEventListener("pointerenter", () => {
+  gauge.addEventListener("pointerenter", (e) => {
+    if (e.pointerType === "touch") return;
     userTouched();
     clearTimeout(gaugeHoverTimer);
     if (!pop.classList.contains("open")) {
@@ -770,47 +815,91 @@
     setPop(!pop.classList.contains("open"));
   });
 
-  // Clicking desktop wallpaper dismisses popover just like macOS NSPopover (.transient)
+  // Clicking desktop wallpaper dismisses popover / active mobile Dock card just like macOS NSPopover (.transient)
   inner.addEventListener("click", (e) => {
-    if (!pop.classList.contains("open")) return;
     if (e.target.closest("#pop, #mbGauge, #dock, #wallPlaque")) return;
-    userTouched();
-    setPop(false);
+    if (pop.classList.contains("open")) {
+      userTouched();
+      setPop(false);
+    } else if (activeDock) {
+      userTouched();
+      updateDockMagnification(null);
+      setDockActive(null);
+    }
   });
 
-  // Pointer → Dock
-  let lastPX = null;
-  dockEl.addEventListener("pointermove", (e) => {
-    userTouched();
-    const sRect = inner.getBoundingClientRect();
-    const stageX = (e.clientX - sRect.left) / stageScale;
-    updateDockMagnification(stageX);
-
+  // Pointer & Touch → Dock
+  let lastPX = null, lastDockTouch = false;
+  function hitTestDock(stageX) {
     let closestId = null, bestDist = 46;
     dockItemEls.forEach((it) => {
+      if (!it.offsetWidth) return;
       const b = toStage(it);
       const bonus = it.dataset.id === activeDock ? 5.5 : 0;
       const d = Math.abs(stageX - (b.x + b.w / 2)) - bonus;
       if (d < bestDist) { bestDist = d; closestId = it.dataset.id; }
     });
-    setDockActive(closestId);
+    return closestId;
+  }
+
+  dockEl.addEventListener("pointerdown", (e) => {
+    lastDockTouch = e.pointerType === "touch";
+    if (e.pointerType !== "touch") return;
+    userTouched();
+    if (pop.classList.contains("open")) setPop(false);
+    const sRect = inner.getBoundingClientRect();
+    const stageX = (e.clientX - sRect.left) / stageScale;
+    const item = e.target.closest(".dock-item");
+    const id = (item && item.offsetWidth ? item.dataset.id : null) || hitTestDock(stageX);
+    if (id) {
+      const targetEl = dockEl.querySelector(`[data-id="${id}"]`);
+      const b = targetEl ? toStage(targetEl) : { x: stageX, w: 0 };
+      updateDockMagnification(b.x + b.w / 2);
+      const wasActive = activeDock === id;
+      setDockActive(id);
+      if (wasActive && dockTiles[id] && dockTiles[id].motion) {
+        dockTiles[id].motion.kick((Math.random() > 0.5 ? 1 : -1) * 0.75);
+        ensureLoop();
+      }
+    }
+    lastPX = e.clientX;
+  });
+
+  dockEl.addEventListener("pointermove", (e) => {
+    userTouched();
+    if (e.pointerType === "touch" && pop.classList.contains("open")) setPop(false);
+    const sRect = inner.getBoundingClientRect();
+    const stageX = (e.clientX - sRect.left) / stageScale;
+    updateDockMagnification(stageX);
+
+    const closestId = hitTestDock(stageX);
+    if (e.pointerType !== "touch" || closestId) setDockActive(closestId);
 
     if (lastPX !== null && activeDock && dockTiles[activeDock] && dockTiles[activeDock].motion) {
       dockTiles[activeDock].motion.kick(clamp((e.clientX - lastPX) * 0.014, -0.55, 0.55));
     }
     lastPX = e.clientX;
   });
-  dockEl.addEventListener("pointerleave", () => {
+  dockEl.addEventListener("pointerleave", (e) => {
     lastPX = null;
+    if (e.pointerType === "touch") return;
     updateDockMagnification(null);
     setDockActive(null);
   });
+  dockEl.addEventListener("pointercancel", () => { lastPX = null; });
   dockEl.addEventListener("click", (e) => {
     const item = e.target.closest(".dock-item");
-    if (!item) return;
+    if (!item || !item.offsetWidth) return;
     userTouched();
     const id = item.dataset.id;
     if (dockTiles[id] && dockTiles[id].motion) dockTiles[id].motion.kick(0.95);
+    if (lastDockTouch || isCompactStage()) {
+      if (pop.classList.contains("open")) setPop(false);
+      focusDockItem(id);
+      if (POPOVER_ORDER.includes(id)) stagePopover.wakeAndSelect(id);
+      ensureLoop();
+      return;
+    }
     if (POPOVER_ORDER.includes(id)) {
       stagePopover.wakeAndSelect(id);
       if (!pop.classList.contains("open")) setPop(true);
@@ -822,12 +911,20 @@
 
   // Gentle idle showcase (yields immediately when visitor interacts)
   const POP_TOUR = ["antigravity", "cursor", "workbuddy", "grokbot", "codex"];
-  let popI = 0, stageVisible = false;
-  setTimeout(() => setPop(true), reduceMotion ? 0 : 750);
+  const DOCK_TOUR = ["codex", "antigravity", "cursor", "grokbot", "claude", "workbuddy"];
+  let popI = 0, dockI = 0, stageVisible = false;
+  setTimeout(() => {
+    if (isCompactStage()) focusDockItem(DOCK_TOUR[0]);
+    else setPop(true);
+  }, reduceMotion ? 0 : 650);
   setInterval(() => {
-    if (!stageVisible || reduceMotion || performance.now() - lastTouch < 8000 || !pop.classList.contains("open")) return;
-    stagePopover.select(POP_TOUR[++popI % POP_TOUR.length], false);
-  }, 3200);
+    if (!stageVisible || reduceMotion || performance.now() - lastTouch < 8000) return;
+    if (isCompactStage() && !pop.classList.contains("open")) {
+      focusDockItem(DOCK_TOUR[++dockI % DOCK_TOUR.length]);
+    } else if (pop.classList.contains("open")) {
+      stagePopover.select(POP_TOUR[++popI % POP_TOUR.length], false);
+    }
+  }, 3400);
   setInterval(() => {
     if (!stageVisible || reduceMotion || document.hidden) return;
     nextRandomWallpaper(false);
@@ -845,12 +942,18 @@
     BENTO_HOVER_APPS.map((id) => `<button type="button" data-bento-app="${id}" role="tab" aria-label="${SNAPSHOTS[id].title}"><img src="${ICON(id)}" alt="" draggable="false" /></button>`).join("");
   const bentoMiniSel = $("#bentoMiniSel");
 
+  function syncBentoMiniSel() {
+    const btn = $(`[data-bento-app="${bentoHoverId}"]`, bentoMiniDock);
+    const idx = Math.max(0, BENTO_HOVER_APPS.indexOf(bentoHoverId));
+    const x = btn && btn.offsetWidth ? (btn.offsetLeft - bentoMiniSel.offsetLeft) : idx * 50;
+    bentoMiniSel.style.transform = `translate3d(${x}px, 0, 0)`;
+  }
+
   function setBentoHover(id, anim = false) {
     if (!SNAPSHOTS[id]) return;
     const changed = bentoHoverId !== id;
     bentoHoverId = id;
-    const idx = Math.max(0, BENTO_HOVER_APPS.indexOf(id));
-    bentoMiniSel.style.transform = `translate3d(${idx * 50}px, 0, 0)`;
+    syncBentoMiniSel();
     bentoTip.innerHTML = renderHoverCardHTML(id);
     if (anim && changed && !reduceMotion) {
       bentoTip.classList.remove("swap");
@@ -859,9 +962,10 @@
     }
   }
   $$("[data-bento-app]", bentoMiniDock).forEach((btn) => {
-    btn.addEventListener("pointerenter", () => setBentoHover(btn.dataset.bentoApp, true));
+    btn.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") setBentoHover(btn.dataset.bentoApp, true); });
     btn.addEventListener("click", () => setBentoHover(btn.dataset.bentoApp, true));
   });
+  new ResizeObserver(syncBentoMiniSel).observe(bentoMiniDock);
   langListeners.push(() => setBentoHover(bentoHoverId));
   setBentoHover("antigravity");
 
@@ -870,10 +974,10 @@
   const bentoPopArt = $("#bentoPopArt");
   const bentoPopScale = $("#bentoPopScale");
   function fitBentoPop() {
-    const availW = (bentoPopArt.clientWidth || 520) - 24;
-    const availH = (bentoPopArt.clientHeight || 400) - 24;
+    const availW = (bentoPopArt.clientWidth || 520) - 16;
+    const availH = (bentoPopArt.clientHeight || 400) - 16;
     const sc = Math.min(1, availW / 448, availH / 344);
-    bentoPopScale.style.transform = `scale(${sc.toFixed(3)})`;
+    bentoPopScale.style.transform = `translate(-50%, -50%) scale(${sc.toFixed(3)})`;
   }
   new ResizeObserver(fitBentoPop).observe(bentoPopArt);
 
@@ -904,7 +1008,8 @@
       ]);
       const off = document.createElement("canvas");
       dockRenderer = new AGLiquid.LiquidRenderer(off, 512);
-      labRenderer = new AGLiquid.LiquidRenderer(lab.canvas, 1024);
+      const labSide = window.innerWidth <= 720 ? 512 : 1024;
+      labRenderer = new AGLiquid.LiquidRenderer(lab.canvas, labSide);
 
       const ids = Object.keys(DEMO);
       const imgs = await Promise.all(ids.map((id) => loadImg(ICON(id))));
@@ -950,17 +1055,30 @@
   }
 
   // Interactive scrubbing on Card 3 (Low-water auto dodge)
-  dodge.art.addEventListener("pointermove", (e) => {
+  let dodgeTouchReset = 0;
+  function scrubDodge(e) {
+    clearTimeout(dodgeTouchReset);
     const r = dodge.art.getBoundingClientRect();
     const pct = clamp(Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 96 + 4), 4, 100);
     if (dodge.manualLevel !== null && Math.abs(pct - dodge.manualLevel) > 1 && dodge.motion) {
       dodge.motion.kick(clamp((pct - dodge.manualLevel) * 0.04, -0.5, 0.5));
+    } else if (dodge.manualLevel === null && dodge.motion) {
+      dodge.motion.kick(0.35);
     }
     dodge.manualLevel = pct;
     if (reduceMotion && dockRenderer) drawDodge();
     ensureLoop();
+  }
+  dodge.art.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") scrubDodge(e); });
+  dodge.art.addEventListener("pointermove", scrubDodge);
+  dodge.art.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "touch") {
+      clearTimeout(dodgeTouchReset);
+      dodgeTouchReset = setTimeout(() => { dodge.manualLevel = null; ensureLoop(); }, 2600);
+    } else {
+      dodge.manualLevel = null;
+    }
   });
-  dodge.art.addEventListener("pointerleave", () => { dodge.manualLevel = null; });
 
   let rafId = 0, lastT = 0;
   function ensureLoop() {
@@ -1115,9 +1233,26 @@
     if (!grid.children.length) {
       grid.innerHTML = labels.map((_, i) => {
         const n = String(i).padStart(2, "0");
-        return `<figure class="style-cell reveal"><video src="assets/styles/style_${n}.mp4?v=${ASSET_V}" muted loop playsinline preload="none" aria-hidden="true"></video><span class="n">${n}</span><span data-style-label="${i}"></span></figure>`;
+        return `<figure class="style-cell reveal"><video src="assets/styles/style_${n}.mp4?v=${ASSET_V}" muted loop playsinline webkit-playsinline preload="metadata" aria-hidden="true"></video><span class="n">${n}</span><span data-style-label="${i}"></span></figure>`;
       }).join("");
-      $$("video", grid).forEach((v) => watchVisible(v, (vis) => { if (vis && !reduceMotion) { v.play().catch(() => {}); } else { v.pause(); } }));
+      $$("video", grid).forEach((v) => {
+        v.defaultMuted = true;
+        v.muted = true;
+        v.playsInline = true;
+        v.addEventListener("loadedmetadata", () => {
+          if (v.paused && v.currentTime === 0) {
+            try { v.currentTime = 0.01; } catch (_) {}
+          }
+        }, { once: true });
+        watchVisible(v, (vis) => {
+          if (vis && !reduceMotion) {
+            v.muted = true;
+            v.play().catch(() => {});
+          } else {
+            v.pause();
+          }
+        });
+      });
       observeReveals(grid);
     }
     $$("[data-style-label]", grid).forEach((s) => (s.textContent = labels[Number(s.dataset.styleLabel)]));
@@ -1329,7 +1464,11 @@
   const filmFrame = $(".film-frame");
   const filmVideo = $("#filmVideo");
   filmVideo.removeAttribute("controls");
-  $("#filmPlay").addEventListener("click", () => { filmVideo.setAttribute("controls", ""); filmVideo.play(); });
+  $("#filmPlay").addEventListener("click", () => {
+    filmFrame.classList.add("playing");
+    filmVideo.setAttribute("controls", "");
+    filmVideo.play().catch(() => {});
+  });
   filmVideo.addEventListener("play", () => { filmVideo.setAttribute("controls", ""); filmFrame.classList.add("playing"); });
   filmVideo.addEventListener("ended", () => filmFrame.classList.remove("playing"));
   const modal = $("#filmModal"), modalVideo = $("#modalVideo");

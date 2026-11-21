@@ -305,41 +305,48 @@ void main() {
       textBaseY = Math.round(py + (pillH - m.cap) * 0.5);
     }
 
-    const layer = () => { const c = document.createElement("canvas"); c.width = c.height = side; return c; };
     const toCanvasY = (y) => side - y;
-    const plateC = layer(), rimC = layer(), textC = layer();
+    const out = document.createElement("canvas");
+    out.width = out.height = side;
+    const o = out.getContext("2d");
+    o.fillStyle = "#000000";
+    o.fillRect(0, 0, side, side);
+    o.globalCompositeOperation = "lighter";
+
+    const traceRoundRect = (ctx, x, y, w, h, r) => {
+      const rr = Math.max(0, Math.min(r, w * 0.5, h * 0.5));
+      ctx.beginPath();
+      if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(x, y, w, h, rr);
+      } else {
+        ctx.moveTo(x + rr, y);
+        ctx.arcTo(x + w, y, x + w, y + h, rr);
+        ctx.arcTo(x + w, y + h, x, y + h, rr);
+        ctx.arcTo(x, y + h, x, y, rr);
+        ctx.arcTo(x, y, x + w, y, rr);
+        ctx.closePath();
+      }
+    };
+
     if (pill) {
       const top = toCanvasY(pill.y + pill.h);
-      const pc = plateC.getContext("2d");
-      pc.fillStyle = "#fff";
-      pc.beginPath(); pc.roundRect(pill.x, top, pill.w, pill.h, pill.r); pc.fill();
-      const rc = rimC.getContext("2d");
-      rc.strokeStyle = "#fff"; rc.lineWidth = Math.max(3.2, side * 0.016);
-      rc.beginPath(); rc.roundRect(pill.x, top, pill.w, pill.h, pill.r); rc.stroke();
-    }
-    const tc = textC.getContext("2d");
-    tc.fillStyle = "#fff";
-    tc.textBaseline = "alphabetic";
-    tc.font = `700 ${mainFs}px ${FONT_STACK}`;
-    tc.fillText(main, textX, toCanvasY(textBaseY));
-    if (unit) {
-      tc.font = `700 ${unitFs}px ${FONT_STACK}`;
-      tc.fillText(unit, textX + m.mA + gap, toCanvasY(textBaseY));
-    }
+      o.fillStyle = "#ff0000";
+      traceRoundRect(o, pill.x, top, pill.w, pill.h, pill.r);
+      o.fill();
 
-    const out = layer();
-    const o = out.getContext("2d");
-    const od = o.createImageData(side, side);
-    const P = plateC.getContext("2d").getImageData(0, 0, side, side).data;
-    const Rr = rimC.getContext("2d").getImageData(0, 0, side, side).data;
-    const T = tc.getImageData(0, 0, side, side).data;
-    for (let i = 0; i < od.data.length; i += 4) {
-      od.data[i] = P[i + 3];
-      od.data[i + 1] = T[i + 3];
-      od.data[i + 2] = Rr[i + 3];
-      od.data[i + 3] = 255;
+      o.strokeStyle = "#0000ff";
+      o.lineWidth = Math.max(3.2, side * 0.016);
+      traceRoundRect(o, pill.x, top, pill.w, pill.h, pill.r);
+      o.stroke();
     }
-    o.putImageData(od, 0, 0);
+    o.fillStyle = "#00ff00";
+    o.textBaseline = "alphabetic";
+    o.font = `700 ${mainFs}px ${FONT_STACK}`;
+    o.fillText(main, textX, toCanvasY(textBaseY));
+    if (unit) {
+      o.font = `700 ${unitFs}px ${FONT_STACK}`;
+      o.fillText(unit, textX + m.mA + gap, toCanvasY(textBaseY));
+    }
     return out;
   }
 
@@ -418,8 +425,8 @@ void main() {
       const key = `${id}|${text}|${style}|${scale}|${dodge}`;
       let t = this.labelTex.get(key);
       if (!t) {
-        if (this.labelTex.size > 260) {
-          for (const [k, v] of this.labelTex) { this.gl.deleteTexture(v); this.labelTex.delete(k); if (this.labelTex.size < 160) break; }
+        if (this.labelTex.size > 72) {
+          for (const [k, v] of this.labelTex) { this.gl.deleteTexture(v); this.labelTex.delete(k); if (this.labelTex.size < 40) break; }
         }
         t = this._texFrom(buildLabel(this.side, icon.body, text, style, scale, remaining));
         this.labelTex.set(key, t);

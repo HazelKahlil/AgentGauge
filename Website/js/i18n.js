@@ -13,14 +13,14 @@ window.AG_I18N = {
     "nav.download": "Download",
     "lang.switch": "中文",
 
-    "hero.eyebrow": "<b>v1.2.1</b> for macOS 26 Tahoe · 30+ AI models &amp; coding plans",
+    "hero.eyebrow": "<b>v1.2.1</b> · macOS Tahoe · Open Source",
     "hero.title": "Your AI quota,<br><em>as clear as water.</em>",
     "hero.sub": "AgentGauge turns every AI tool in your Dock into a living liquid gauge. Hover to see what’s left, your plan tier, API balance and reset time — for Claude, Codex, Cursor, Antigravity, DeepSeek and 30+ mainstream AI models &amp; plans.",
     "hero.cta": "Download for macOS",
     "hero.film": "Watch the film",
     "hero.filmLen": "62s",
-    "hero.meta": "Native Swift + Metal · Open source · Runs locally on your Mac",
-    "hero.hint": "Hover the Dock — or click the gauge in the menu bar",
+    "hero.meta": "Native Swift + Metal · MIT Open Source · Runs locally on your Mac",
+    "hero.hint": "Hover or tap any Dock icon — or click the gauge in the menu bar",
 
     "mb.finder": "Finder",
     "mb.menus": ["File", "Edit", "View", "Go", "Window"],
@@ -42,7 +42,7 @@ window.AG_I18N = {
     "lab.pill": "R-corner badge",
     "lab.drain": "Drain",
     "lab.refill": "Refill",
-    "lab.hint": "Move your cursor across the icon",
+    "lab.hint": "Move your cursor or finger across the icon",
     "lab.note": "Browser preview approximates the native Metal renderer.",
     "lab.s1": "Half-float Metal pipeline",
     "lab.s2": "Retina tile, 256 × 256",
@@ -68,7 +68,7 @@ window.AG_I18N = {
     "styles.desc": "From top-bar countdowns and dynamic polarity-split numerals to Braun arc needles and micro-HUDs — every badge swims over signature refracting liquid.",
     "styles.labels": ["Top timer scrim", "Dynamic split", "Micro-halo text", "Concentric pill", "Aperture sweep", "Pixel LED matrix", "Dual-track HUD", "Braun arc needle", "5-cell prism bar", "Dynamic micro-island", "Top energy brow", "Low-water dodge"],
 
-    "film.eyebrow": "The film · v1.2.0",
+    "film.eyebrow": "The film · v1.2.1",
     "film.title": "AgentGauge in <em>62 seconds.</em>",
     "film.desc": "Every frame was rendered by the app itself — real Metal tiles, real windows.",
 
@@ -118,7 +118,8 @@ window.AG_I18N = {
     "cta.title": "Put your AI quota<br><em>in the Dock.</em>",
     "cta.sub": "Free your attention for the work that matters.",
     "cta.btn": "Download for macOS · v1.2.1",
-    "cta.meta": "macOS 26 Tahoe or later",
+    "cta.gh": "Star on GitHub · MIT",
+    "cta.meta": "macOS 26 Tahoe or later · 100% Free & Open Source",
 
     "foot.tag": "Your AI quota, as clear as water.",
     "foot.product": "Product",
@@ -142,14 +143,14 @@ window.AG_I18N = {
     "nav.download": "下载",
     "lang.switch": "EN",
 
-    "hero.eyebrow": "<b>v1.2.1</b> 适配 macOS 26 Tahoe · 支持 30+ 主流大模型与套餐",
+    "hero.eyebrow": "<b>v1.2.1</b> · macOS Tahoe · 开源项目",
     "hero.title": "AI 额度，<br><em>清澈如水。</em>",
     "hero.sub": "AgentGauge 把 Dock 里的每个 AI 工具，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置倒计时——Claude、Codex、Cursor、Antigravity、DeepSeek 等 30+ 主流模型与 Coding Plan，一览无余。",
     "hero.cta": "下载 macOS 版",
     "hero.film": "观看宣传片",
     "hero.filmLen": "62 秒",
-    "hero.meta": "原生 Swift + Metal · 开源可审计 · 完全在本机运行",
-    "hero.hint": "悬停 Dock 图标，或点击菜单栏里的水位图标",
+    "hero.meta": "原生 Swift + Metal · MIT 开源项目 · 完全在本机运行",
+    "hero.hint": "轻点或滑动 Dock 图标点亮水位，或点击顶栏仪表查看全局看板",
 
     "mb.finder": "访达",
     "mb.menus": ["文件", "编辑", "显示", "前往", "窗口"],
@@ -171,7 +172,7 @@ window.AG_I18N = {
     "lab.pill": "同心 R 角",
     "lab.drain": "放水",
     "lab.refill": "注满",
-    "lab.hint": "用鼠标划过图标试试",
+    "lab.hint": "用手指或鼠标划过图标试试",
     "lab.note": "网页预览为原生 Metal 渲染的近似效果。",
     "lab.s1": "半精度 Metal 渲染管线",
     "lab.s2": "Retina 图块 · 256 × 256",
@@ -197,7 +198,7 @@ window.AG_I18N = {
     "styles.desc": "从顶栏重置倒计时、动态极性反相字，到博朗圆弧指针与双轨微仪表——全系共享折射气泡水体。",
     "styles.labels": ["截图顶栏时间", "动态反相字", "微晶描边字", "同心 R 角", "光圈扇叶扫描", "像素 LED 点阵", "双轨微仪表", "博朗圆弧指针", "底部 5 格晶块", "顶部灵动微岛", "顶部弧形光眉", "低水位避让"],
 
-    "film.eyebrow": "宣传片 · v1.2.0",
+    "film.eyebrow": "宣传片 · v1.2.1",
     "film.title": "<em>62 秒</em>，看懂 AgentGauge。",
     "film.desc": "每一帧都由应用自身渲染——真实的 Metal 图块，真实的系统窗口。",
 
@@ -247,7 +248,8 @@ window.AG_I18N = {
     "cta.title": "把 AI 额度，<br><em>装进你的 Dock。</em>",
     "cta.sub": "把注意力，留给真正重要的工作。",
     "cta.btn": "下载 macOS 版 · v1.2.1",
-    "cta.meta": "需要 macOS 26 Tahoe 或更新版本",
+    "cta.gh": "GitHub 开源仓库 · MIT",
+    "cta.meta": "需要 macOS 26 Tahoe 或更新版本 · 完全免费开源",
 
     "foot.tag": "AI 额度，清澈如水。",
     "foot.product": "产品",
