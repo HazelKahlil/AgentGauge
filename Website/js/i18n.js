@@ -2,7 +2,7 @@
 window.AG_I18N = {
   en: {
     "meta.title": "AgentGauge — Your AI quota, as clear as water",
-    "meta.desc": "AgentGauge turns every AI Coding Agent and Foundation Model app in your Mac's Dock into a living liquid gauge. Hover to see remaining quota, plan tier, API balance and reset time across 29 AI vendors.",
+    "meta.desc": "AgentGauge turns every AI Coding Agent and Foundation Model app in your Mac's Dock into a living liquid gauge. Hover to see remaining quota, plan tier, API balance and reset time across 30+ AI models and coding plans.",
     "nav.features": "Features",
     "nav.lab": "Liquid Lab",
     "nav.styles": "Styles",
@@ -12,9 +12,9 @@ window.AG_I18N = {
     "nav.download": "Download",
     "lang.switch": "中文",
 
-    "hero.eyebrow": "<b>v1.2.0</b> for macOS 26 Tahoe · 29 Coding Plans &amp; AI vendors",
+    "hero.eyebrow": "<b>v1.2.0</b> for macOS 26 Tahoe · 30+ AI models &amp; coding plans",
     "hero.title": "Your AI quota,<br><em>as clear as water.</em>",
-    "hero.sub": "AgentGauge turns every AI tool in your Dock into a living liquid gauge. Hover to see what’s left, your plan tier, API balance and reset time — for Claude, Codex, Cursor, Antigravity, DeepSeek and 24 more.",
+    "hero.sub": "AgentGauge turns every AI tool in your Dock into a living liquid gauge. Hover to see what’s left, your plan tier, API balance and reset time — for Claude, Codex, Cursor, Antigravity, DeepSeek and 30+ mainstream AI models &amp; plans.",
     "hero.cta": "Download for macOS",
     "hero.film": "Watch the film",
     "hero.filmLen": "62s",
@@ -56,7 +56,7 @@ window.AG_I18N = {
     "feat.dodge.t": "The number gets out of the way",
     "feat.dodge.d": "When water runs low, the badge glides to the top corner so it never hides the icon.",
     "feat.settings.t": "Native, and entirely yours",
-    "feat.settings.d": "Pick from 29 AI vendors, 11 curated optical-water styles, water tint, size and density — previewed live.",
+    "feat.settings.d": "Support for 30+ mainstream AI models & plans, 11 curated optical-water styles, water tint, size and density — previewed live.",
     "feat.idle.t": "Zero cost at rest",
     "feat.idle.d": "Rendering runs only while you hover. Leave the Dock and AgentGauge goes still.",
     "feat.private.t": "Local by design",
@@ -72,11 +72,12 @@ window.AG_I18N = {
     "film.desc": "Every frame was rendered by the app itself — real Metal tiles, real windows.",
 
     "apps.eyebrow": "Authentic Quota Sources",
-    "apps.title": "29 AI vendors.<br><em>One gauge.</em>",
-    "apps.desc": "Official coding agents, AI IDEs, foundation-model subscriptions and API balance pools — zero local wrappers or fake 100% fillers.",
+    "apps.title": "30+ AI models &amp; plans.<br><em>And growing.</em>",
+    "apps.desc": "Official coding agents, AI IDEs, foundation-model subscriptions and API balance pools — with more mainstream vendors added continuously.",
     "apps.all": "All",
     "apps.coding": "Coding agents & IDEs",
     "apps.ai": "Foundation models & plans",
+    "apps.more": "More coming",
 
     "how.eyebrow": "Get started",
     "how.title": "Three steps. <em>Then forget about it.</em>",
@@ -90,7 +91,7 @@ window.AG_I18N = {
     "faq.eyebrow": "FAQ",
     "faq.title": "Questions, <em>answered.</em>",
     "faq.q1": "Which apps does AgentGauge support?",
-    "faq.a1": "29 authentic Coding-Plan and foundation-model vendors today: Claude, ChatGPT / Codex, Cursor, Antigravity, Grok Bot, Windsurf, VS Code (Copilot), WorkBuddy, Trae, Kiro, Qoder, Zed, Warp, Devin, JetBrains IDEs, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Perplexity, Le Chat, Manus and Poe — strictly real subscription quotas, credits and API balances.",
+    "faq.a1": "30+ mainstream Coding-Plan and foundation-model vendors including Claude, ChatGPT / Codex, Cursor, Antigravity, Grok Bot, Windsurf, VS Code (Copilot), WorkBuddy, Trae, Kiro, Qoder, Zed, Warp, Devin, JetBrains IDEs, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Perplexity, Le Chat, Manus, Poe — and continuously expanding to more official model providers.",
     "faq.q2": "Do I need to sign in again?",
     "faq.a2": "Usually not. AgentGauge reads the sign-in state your apps already keep on your Mac. A few services need a one-time web connection, and the app will tell you which.",
     "faq.q3": "Why does it ask for Accessibility permission?",
@@ -118,7 +119,7 @@ window.AG_I18N = {
 
   zh: {
     "meta.title": "AgentGauge — AI 额度，清澈如水",
-    "meta.desc": "AgentGauge 把 Mac Dock 里的每个 AI 编程智能体与大模型应用，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置时间，已支持 29 家主流模型与套餐厂商。",
+    "meta.desc": "AgentGauge 把 Mac Dock 里的每个 AI 编程智能体与大模型应用，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置时间，支持 30+ 主流大模型与套餐厂商并持续扩展。",
     "nav.features": "功能",
     "nav.lab": "液态实验室",
     "nav.styles": "样式",
@@ -128,9 +129,9 @@ window.AG_I18N = {
     "nav.download": "下载",
     "lang.switch": "EN",
 
-    "hero.eyebrow": "<b>v1.2.0</b> 适配 macOS 26 Tahoe · 29 家大模型与 Coding Plan",
+    "hero.eyebrow": "<b>v1.2.0</b> 适配 macOS 26 Tahoe · 支持 30+ 主流大模型与套餐",
     "hero.title": "AI 额度，<br><em>清澈如水。</em>",
-    "hero.sub": "AgentGauge 把 Dock 里的每个 AI 工具，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置倒计时——Claude、Codex、Cursor、Antigravity、DeepSeek 等 29 家官方厂商，一览无余。",
+    "hero.sub": "AgentGauge 把 Dock 里的每个 AI 工具，变成一枚会流动的液态仪表。悬停即见剩余额度、订阅套餐、API 余额与重置倒计时——Claude、Codex、Cursor、Antigravity、DeepSeek 等 30+ 主流模型与 Coding Plan，一览无余。",
     "hero.cta": "下载 macOS 版",
     "hero.film": "观看宣传片",
     "hero.filmLen": "62 秒",
@@ -143,7 +144,7 @@ window.AG_I18N = {
     "strip.label": "直接读取你已订阅的 AI 工具额度",
 
     "manifesto.text": "别再挨个打开应用，才发现<span class=\"m-dim\">额度早已见底。</span>AgentGauge 把所有额度，放在你目光本就停留的地方——<span class=\"m-ink\">Dock 与菜单栏。</span>",
-    "manifesto.n1": "家自研大模型与套餐厂商",
+    "manifesto.n1": "主流大模型与套餐持续接入",
     "manifesto.n2": "毫秒 · Metal 单帧渲染",
     "manifesto.n3": "移开视线即零占用",
 
@@ -172,7 +173,7 @@ window.AG_I18N = {
     "feat.dodge.t": "低水位，数字自动避让",
     "feat.dodge.d": "余量越少，徽标越会滑向顶部角落，永远不遮挡图标本身。",
     "feat.settings.t": "原生设置，一切随心",
-    "feat.settings.d": "29 款真实计费厂商自由勾选，11 种精选光学水波样式，水色、字号与浓度实时预览。",
+    "feat.settings.d": "支持 30+ 主流模型与套餐自由勾选，11 种精选光学水波样式，水色、字号与浓度实时预览。",
     "feat.idle.t": "闲置时，零占用",
     "feat.idle.d": "只在悬停时渲染。离开 Dock，AgentGauge 便安静下来。",
     "feat.private.t": "本地优先",
@@ -188,11 +189,12 @@ window.AG_I18N = {
     "film.desc": "每一帧都由应用自身渲染——真实的 Metal 图块，真实的系统窗口。",
 
     "apps.eyebrow": "真实配额直连",
-    "apps.title": "29 家模型与套餐，<br><em>一枚仪表。</em>",
-    "apps.desc": "专注真实计费的编程智能体、AI IDE、自研大模型订阅与官方 API 余额池——剔除无配额本地壳。",
+    "apps.title": "30+ 主流模型与套餐，<br><em>持续扩展更多。</em>",
+    "apps.desc": "覆盖主流编程智能体、AI IDE、自研大模型订阅与官方 API 余额池，更多厂商持续接入中。",
     "apps.all": "全部",
     "apps.coding": "编程智能体与 IDE",
     "apps.ai": "自研大模型与套餐",
+    "apps.more": "持续接入更多",
 
     "how.eyebrow": "开始使用",
     "how.title": "三步上手，<em>然后忘掉它。</em>",
@@ -206,7 +208,7 @@ window.AG_I18N = {
     "faq.eyebrow": "常见问题",
     "faq.title": "你可能<em>想知道。</em>",
     "faq.q1": "AgentGauge 支持哪些应用？",
-    "faq.a1": "严格聚焦拥有真实订阅配额、Coding Plan 积分或官方 API 余额池的 29 家厂商：包括 Claude、ChatGPT / Codex、Cursor、Antigravity、Grok Bot、Windsurf、VS Code (Copilot)、WorkBuddy、Trae、Kiro、Qoder、Zed、Warp、Devin、JetBrains 全家桶、Gemini、Grok、DeepSeek、Kimi、智谱 GLM、通义千问 Qwen、豆包、MiniMax、Perplexity、Le Chat、Manus 与 Poe。",
+    "faq.a1": "已支持 30+ 主流订阅配额、Coding Plan 积分与官方 API 余额厂商：包括 Claude、ChatGPT / Codex、Cursor、Antigravity、Grok Bot、Windsurf、VS Code (Copilot)、WorkBuddy、Trae、Kiro、Qoder、Zed、Warp、Devin、JetBrains 全家桶、Gemini、Grok、DeepSeek、Kimi、智谱 GLM、通义千问 Qwen、豆包、MiniMax、Perplexity、Le Chat、Manus、Poe 等，并持续适配更多主流模型厂商。",
     "faq.q2": "需要重新登录账号吗？",
     "faq.a2": "通常不需要。AgentGauge 读取各应用在本机已保存的登录状态；少数服务需要一次性网页连接，应用内会明确提示。",
     "faq.q3": "为什么需要辅助功能权限？",

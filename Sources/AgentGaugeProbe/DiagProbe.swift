@@ -19,6 +19,11 @@ struct DiagProbe {
             await PromoExport.exportHDHeroes(outDir: out)
             return
         }
+        if let i = argv.firstIndex(of: "--promo-opening-update") {
+            let out = (i + 1 < argv.count) ? argv[i + 1] : "\(PromoExport.repoRoot)/Promo/public"
+            await PromoExport.exportOpeningMultiStyles(outDir: out)
+            return
+        }
         if let i = argv.firstIndex(of: "--promo-capture-app") {
             let prefix = (i + 1 < argv.count) ? argv[i + 1] : "settings"
             await PromoExport.captureApp(outDir: "\(PromoExport.repoRoot)/Promo/public", prefix: prefix)

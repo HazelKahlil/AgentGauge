@@ -10,7 +10,7 @@
     <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.2.0-141413?style=flat-square" alt="Release v1.2.0" /></a>
     <img src="https://img.shields.io/badge/platform-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/engine-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
-    <img src="https://img.shields.io/badge/supported-29%20AI%20Vendors-478577?style=flat-square" alt="29 AI Vendors" />
+    <img src="https://img.shields.io/badge/supported-30%2B%20AI%20Models%20%26%20Plans-478577?style=flat-square" alt="30+ AI Models & Plans" />
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-77756f?style=flat-square" alt="MIT License" /></a>
   </p>
 
@@ -53,8 +53,8 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
       <p><strong>11 Curated Styles · Unified Optical Water</strong><br />Top-timer scrims, dynamic polarity-split numerals, camera aperture sweeps, pixel LED matrices, Braun arc needles, and low-water dodge — all sharing signature refracting bubble water.</p>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="29 Authentic AI Vendors" />
-      <p><strong>29 Authentic AI Vendors · Zero Filler</strong><br />Strictly official Coding-Plan agents, AI IDEs, foundation-model subscriptions, and API currency balance pools — never fake <code>100%</code> placeholders on local wrappers.</p>
+      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="30+ Supported AI Models & Coding Plans" />
+      <p><strong>30+ AI Models &amp; Plans · Continuously Growing</strong><br />Official Coding-Plan agents, AI IDEs, foundation-model subscriptions, and API currency balance pools — never fake <code>100%</code> placeholders on local wrappers.</p>
     </td>
   </tr>
 </table>
@@ -65,7 +65,7 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 - **11 Curated Optical-Water Styles**: New pure-icon indicator suite (`Top Timer Scrim`, `Dynamic Split`, `Micro-Halo Text`, `Concentric R-Corner Dodge`, `Aperture Sweep`, `Pixel LED Matrix`, `Dual-Track HUD`, `Braun Arc Needle`, `5-Cell Prism Bar`, `Dynamic Micro-Island`, `Top Energy Brow`) unified onto the signature optical bubble-refraction Metal shader.
 - **Gravity-Stabilized 120Hz Physics & Rail Centering**: Critically damped wave equilibrium (`0` async jitter) and perpendicular-bisector neighbor handoff so Dock hover cards glide along a horizontal rail without vertical bounce.
-- **Authentic 29-Vendor Purification & First-Class API Balances**: Removed non-metered local browsers/wrappers; added direct currency balance rendering (`DeepSeek` / `Kimi` `¥` / `$` API balances), GitHub Copilot (`gh api /copilot_internal/user`), Windsurf local Protobuf state, and cached Antigravity `AI Ultra` plan tier detection.
+- **Authentic 30+ Model & Coding-Plan Purification + API Balances**: Focused on real metered models & plans; added direct currency balance rendering (`DeepSeek` / `Kimi` `¥` / `$` API balances), GitHub Copilot (`gh api /copilot_internal/user`), Windsurf local Protobuf state, and cached Antigravity `AI Ultra` plan tier detection.
 - **Zero-Power Sleep & Self-Healing IPC**: Automatic `NSWorkspace` sleep/screen-lock suspension, 5s Mach Dock-tile circuit breaker, and deterministic subprocess reaping.
 
 ---
@@ -101,12 +101,12 @@ cd AgentGauge
 
 ---
 
-## Supported Vendors (29)
+## Supported Models & Coding Plans (30+ & Growing)
 
 | Category | Vendors & Official Desktop Apps |
 | :--- | :--- |
-| **Coding Agents & AI IDEs (17)** | ChatGPT / Codex, Antigravity, Claude, Cursor, Grok Bot, Windsurf, WorkBuddy, Trae, Kiro, VS Code (Copilot), Qoder, Zed, Warp, Devin, IntelliJ IDEA, PyCharm, WebStorm |
-| **Foundation Models & Token/API Plans (12)** | Gemini, Grok, DeepSeek, Kimi, GLM (ChatGLM), Qwen, Doubao, MiniMax, Perplexity, Le Chat (Mistral), Manus, Poe |
+| **Coding Agents & AI IDEs** | ChatGPT / Codex, Antigravity, Claude, Cursor, Grok Bot, Windsurf, WorkBuddy, Trae, Kiro, VS Code (Copilot), Qoder, Zed, Warp, Devin, IntelliJ IDEA, PyCharm, WebStorm |
+| **Foundation Models & Token/API Plans** | Gemini, Grok, DeepSeek, Kimi, GLM (ChatGLM), Qwen, Doubao, MiniMax, Perplexity, Le Chat (Mistral), Manus, Poe — *with more providers continuously added* |
 
 ---
 
@@ -129,7 +129,7 @@ AgentGauge is architected to be **100% local and auditable**:
 AgentGauge/
 ├── Sources/
 │   ├── CNativeDockTile/      # Low-level macOS Dock tile bridge
-│   ├── AgentGaugeCore/       # 16-bit half-float Metal shader, store & 29 vendor providers
+│   ├── AgentGaugeCore/       # 16-bit half-float Metal shader, store & 30+ vendor providers
 │   ├── AgentGaugeApp/        # MenuBarPopoverView, HoverTooltipPanel & Settings workbench
 │   ├── AgentGaugeCleanup/    # Crash-safe Dock icon restoration daemon
 │   └── AgentGaugeProbe/      # CLI diagnostics & tile verification tool

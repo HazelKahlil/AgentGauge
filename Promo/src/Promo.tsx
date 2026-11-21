@@ -331,7 +331,7 @@ const Brand: React.FC = () => {
         <Icon name="agentgauge" size={236} style={{ filter: "drop-shadow(0 30px 60px rgba(20,30,60,0.52))" }} />
       </div>
       <div style={{ position: "absolute", top: 522, width: "100%", display: "flex", justifyContent: "center" }}>
-        <Eyebrow text="v1.2.0 · macOS 26 Tahoe · 29 AI Vendors" delay={0.28} />
+        <Eyebrow text="v1.2.0 · macOS 26 Tahoe · 30+ 主流模型与套餐" delay={0.28} />
       </div>
       <div style={{ position: "absolute", top: 586, width: "100%", display: "flex", justifyContent: "center" }}>
         <Reveal text="AgentGauge" delay={0.45} size={116} weight={700} align="center" letterSpacing={-4} stagger={0.032} />
@@ -361,49 +361,57 @@ type HeroItem = {
 
 const HD_HEROES: HeroItem[] = [
   {
+    id: "codex",
+    dir: "hd_codex",
+    name: "ChatGPT / Codex",
+    headline: "截图顶栏时间 · 余量一眼即知",
+    sub: "上方实时显示重置倒计时，下方翡翠光学水波与气泡清澈跃动",
+    badge: "Pro Lite 5x · 37% 剩余",
+    pct: "37%",
+    glow: "rgba(76, 178, 150, 0.34)",
+    dot: "#66D4B8",
+    from: 0.0,
+    to: 2.1,
+  },
+  {
     id: "grokbot",
     dir: "hd_grokbot",
     name: "Grok Bot",
-    headline: "动态反相字 · 实时流动",
-    sub: "暖陶液态水波随惯性轻盈摇曳，微小气泡折射清晰可见",
+    headline: "博朗圆弧指针 · 精密机械美学",
+    sub: "经典德系半圆刻度与橙红指针，随暖陶液态水波同频呼吸",
     badge: "Premium · 69% 剩余",
     pct: "69%",
     glow: "rgba(222, 146, 108, 0.34)",
     dot: "#E2A17E",
-    from: 0.0,
-    to: 2.2,
+    from: 2.1,
+    to: 4.2,
   },
   {
     id: "cursor",
     dir: "hd_cursor",
     name: "Cursor",
-    headline: "智能极性反转 · 零遮挡",
-    sub: "无底板纯字贴合图标边缘，跨过明暗区域自动黑白切割",
+    headline: "双轨微仪表 · 主周限额同屏",
+    sub: "主窗口与周限额双轨并列，1024px 原生 Metal 纤毫毕现",
     badge: "Ultra 20x · 68% 剩余",
     pct: "68%",
     glow: "rgba(156, 144, 232, 0.34)",
     dot: "#A499EC",
-    from: 2.2,
-    to: 4.4,
+    from: 4.2,
+    to: 6.3,
   },
-  {
-    id: "antigravity",
-    dir: "hd_antigravity",
-    name: "Antigravity",
-    headline: "全彩图标 · 液态玻璃折射",
-    sub: "双层波峰高光与色散折射，1024px Metal 管线纤毫毕现",
-    badge: "AI Ultra · 64% 剩余",
-    pct: "64%",
-    glow: "rgba(105, 168, 255, 0.36)",
-    dot: "#7EB6FF",
-    from: 4.4,
-    to: 6.6,
-  },
+];
+
+const HD_LINEUP = [
+  { id: "codex", dir: "hd_codex", name: "ChatGPT", styleName: "截图顶栏时间", glow: "rgba(76, 178, 150, 0.34)", dot: "#66D4B8" },
+  { id: "claude", dir: "hd_claude", name: "Claude", styleName: "像素 LED 点阵", glow: "rgba(218, 128, 92, 0.34)", dot: "#E89A78" },
+  { id: "grokbot", dir: "hd_grokbot", name: "Grok Bot", styleName: "博朗圆弧指针", glow: "rgba(222, 146, 108, 0.34)", dot: "#E2A17E" },
+  { id: "cursor", dir: "hd_cursor", name: "Cursor", styleName: "双轨微仪表", glow: "rgba(156, 144, 232, 0.34)", dot: "#A499EC" },
+  { id: "antigravity", dir: "hd_antigravity", name: "Antigravity", styleName: "同心 R 角胶囊", glow: "rgba(105, 168, 255, 0.36)", dot: "#7EB6FF" },
 ];
 
 const HDShowcase: React.FC = () => {
   const { t, dur } = useTime();
-  const trioStart = 6.55;
+  const trioStart = 6.25;
   const soloMaster = interpolate(t, [trioStart - 0.12, trioStart + 0.18], [1, 0], clamp);
   const trioMaster = interpolate(t, [trioStart, trioStart + 0.35], [0, 1], { ...clamp, easing: ease });
   const HERO_SIZE = 650;
@@ -555,19 +563,19 @@ const HDShowcase: React.FC = () => {
 
       {trioMaster > 0.002 && (
         <AbsoluteFill style={{ opacity: trioMaster }}>
-          <div style={{ position: "absolute", top: 108, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-            <Eyebrow text="Real-Time Liquid Glass" delay={trioStart + 0.05} />
+          <div style={{ position: "absolute", top: 112, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+            <Eyebrow text="11 Curated Liquid Styles · 多样混搭" delay={trioStart + 0.05} />
             <div
               style={{
                 fontFamily: FONT,
-                fontSize: 64,
+                fontSize: 62,
                 fontWeight: 700,
                 color: C.text,
                 letterSpacing: -1.4,
                 transform: `translateY(${(1 - trioMaster) * 24}px)`,
               }}
             >
-              每一枚图标，都是流动的实时仪表盘
+              多款指示样式自由混搭 · 每一枚都是流动仪表盘
             </div>
           </div>
 
@@ -575,16 +583,16 @@ const HDShowcase: React.FC = () => {
             style={{
               position: "absolute",
               left: 0,
-              top: 286,
+              top: 326,
               width: 1920,
               display: "flex",
               justifyContent: "center",
               alignItems: "flex-start",
-              gap: 92,
+              gap: 38,
             }}
           >
-            {HD_HEROES.map((h, i) => {
-              const p = interpolate(t, [trioStart + i * 0.07, trioStart + 0.42 + i * 0.07], [0, 1], { ...clamp, easing: ease });
+            {HD_LINEUP.map((h, i) => {
+              const p = interpolate(t, [trioStart + i * 0.055, trioStart + 0.38 + i * 0.055], [0, 1], { ...clamp, easing: ease });
               return (
                 <div
                   key={h.id}
@@ -600,7 +608,7 @@ const HDShowcase: React.FC = () => {
                     <div
                       style={{
                         position: "absolute",
-                        inset: -60,
+                        inset: -44,
                         background: `radial-gradient(circle, ${h.glow}, rgba(0,0,0,0) 64%)`,
                       }}
                     />
@@ -608,15 +616,15 @@ const HDShowcase: React.FC = () => {
                       dir={h.dir}
                       frames={240}
                       start={0}
-                      size={436}
-                      style={{ position: "relative", filter: "drop-shadow(0 30px 55px rgba(0,0,0,0.58))" }}
+                      size={308}
+                      style={{ position: "relative", filter: "drop-shadow(0 28px 50px rgba(0,0,0,0.58))" }}
                     />
                   </div>
-                  <div style={{ fontFamily: FONT, fontSize: 34, fontWeight: 700, color: C.text, marginTop: 22, letterSpacing: -0.5 }}>
+                  <div style={{ fontFamily: FONT, fontSize: 30, fontWeight: 700, color: C.text, marginTop: 20, letterSpacing: -0.4 }}>
                     {h.name}
                   </div>
-                  <div style={{ fontFamily: FONT, fontSize: 22, fontWeight: 600, color: h.dot, marginTop: 6 }}>
-                    {h.badge}
+                  <div style={{ fontFamily: FONT, fontSize: 21, fontWeight: 600, color: h.dot, marginTop: 6 }}>
+                    {h.styleName}
                   </div>
                 </div>
               );
@@ -737,11 +745,15 @@ const DockDemo: React.FC = () => {
         }}
       />
       {DOCK.map((name, i) => {
+        const isAI = ["antigravity", "codex", "cursor", "grokbot", "claude", "workbuddy"].includes(name);
         const h = HOVERS.find((hh) => hh.i === i);
-        let tileOpacity = 0;
-        if (h) {
-          tileOpacity = Math.min(interpolate(t, [h.from, h.from + 0.12], [0, 1], clamp), interpolate(t, [h.to, h.to + 0.3], [1, 0], clamp));
-        }
+        const isHovered = h ? t >= h.from - 0.1 && t <= h.to + 0.2 : false;
+        const tileOpacity = isAI
+          ? Math.min(
+              interpolate(t, [0.15 + i * 0.05, 0.55 + i * 0.05], [0, isHovered ? 1 : 0.94], clamp),
+              interpolate(t, [8.65, 8.95], [1, 0], clamp),
+            )
+          : 0;
         // Gaussian Dock magnification matching real macOS
         const dist = Math.abs(cx - iconCX(i));
         const g = Math.exp(-(dist * dist) / (2 * 92 * 92)) * dockHoverStrength;
@@ -762,9 +774,9 @@ const DockDemo: React.FC = () => {
             }}
           >
             <Icon name={name} size={ICON_SZ} style={{ position: "absolute", inset: 0 }} />
-            {h && tileOpacity > 0 && (
+            {isAI && tileOpacity > 0 && (
               <div style={{ position: "absolute", inset: 0, opacity: tileOpacity }}>
-                <TileSeq dir={`wake_${h.id}`} frames={96} start={h.from} size={ICON_SZ} />
+                <TileSeq dir={`wake_${name}`} frames={270} start={0} size={ICON_SZ} />
               </div>
             )}
             <div style={{ position: "absolute", left: ICON_SZ / 2 - 3, top: ICON_SZ + 9, width: 6, height: 6, borderRadius: 3, background: "rgba(255,255,255,0.68)" }} />
@@ -836,38 +848,61 @@ const DockDemo: React.FC = () => {
   );
 };
 
-/* =============================== Scene 5 · Macro tile =============================== */
+/* =============================== Scene 5 · Macro 2x2 Multi-Style Drain Quartet =============================== */
 
 const FEATURES = [
   { n: "01", title: "Retina 级 Metal 实时渲染", sub: "半精度着色器管线，每帧约 1.7 ms", at: 0.6 },
-  { n: "02", title: "波浪、气泡与光学折射", sub: "鼠标划过，水面随惯性轻轻摇晃", at: 1.8 },
-  { n: "03", title: "低水位，数字自动避让", sub: "余量越少，越不遮挡图标本体", at: 3.2 },
+  { n: "02", title: "波浪、气泡与光学折射", sub: "鼠标划过，水面随惯性轻盈摇晃", at: 1.8 },
+  { n: "03", title: "多样式同步响应 · 低水位避让", sub: "顶栏计时、灵动微岛、光圈扫描与胶囊自由混搭", at: 3.2 },
   { n: "04", title: "闲置零占用，即停即醒", sub: "离开 Dock 自动休眠，回来瞬间唤醒", at: 4.4 },
+];
+
+const DRAIN_QUARTET = [
+  { dir: "drain_codex", label: "截图顶栏时间" },
+  { dir: "drain_claude", label: "顶部灵动微岛" },
+  { dir: "drain_cursor", label: "光圈扇叶扫描" },
+  { dir: "drain_antigravity", label: "同心 R 角避让" },
 ];
 
 const Macro: React.FC = () => {
   const { t, dur } = useTime();
   const enter = useSpringAt(0.0, 18, 1, 90);
-  const S = 540;
+  const cellS = 252;
+  const gap = 30;
   return (
     <AbsoluteFill style={{ opacity: fadeIO(t, dur, 0.3, 0.3) }}>
       <Wallpaper painting="monet" dim={0.48} />
       <div
         style={{
           position: "absolute",
-          left: 120,
-          top: 140,
-          width: 800,
-          height: 800,
-          background: "radial-gradient(circle at 50% 46%, rgba(110,160,255,0.28), rgba(0,0,0,0) 60%)",
+          left: 110,
+          top: 130,
+          width: 820,
+          height: 820,
+          background: "radial-gradient(circle at 50% 48%, rgba(110,160,255,0.28), rgba(0,0,0,0) 62%)",
           opacity: enter,
         }}
       />
-      <div style={{ position: "absolute", left: 250, top: 220, transform: `translateY(${(1 - enter) * 60}px) scale(${interpolate(enter, [0, 1], [0.9, 1])})`, opacity: enter }}>
-        <TileSeq dir="drain_antigravity" frames={180} size={S} style={{ filter: "drop-shadow(0 40px 70px rgba(0,0,0,0.55))" }} />
-        <div style={{ position: "absolute", top: S - 30, left: 0, transform: "scaleY(-1)", opacity: 0.10, WebkitMaskImage: "linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0) 40%)", maskImage: "linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0) 40%)" }}>
-          <TileSeq dir="drain_antigravity" frames={180} size={S} />
-        </div>
+      <div
+        style={{
+          position: "absolute",
+          left: 224,
+          top: 200,
+          width: cellS * 2 + gap,
+          display: "grid",
+          gridTemplateColumns: `${cellS}px ${cellS}px`,
+          columnGap: gap,
+          rowGap: 32,
+          transform: `translateY(${(1 - enter) * 56}px) scale(${interpolate(enter, [0, 1], [0.9, 1])})`,
+          opacity: enter,
+        }}
+      >
+        {DRAIN_QUARTET.map((item) => (
+          <div key={item.dir} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <TileSeq dir={item.dir} frames={180} size={cellS} style={{ filter: "drop-shadow(0 28px 50px rgba(0,0,0,0.52))" }} />
+            <div style={{ fontFamily: FONT, fontSize: 21, fontWeight: 600, color: C.dim, marginTop: 10 }}>{item.label}</div>
+          </div>
+        ))}
       </div>
 
       <div style={{ position: "absolute", left: 960, top: 190, width: 860 }}>
@@ -1480,9 +1515,9 @@ const Settings: React.FC = () => {
         <Reveal text="原生设置，" delay={0.2} size={76} weight={700} stagger={0.04} letterSpacing={-1.5} />
         <Reveal text="一切随心。" delay={0.5} size={76} weight={700} stagger={0.04} letterSpacing={-1.5} gradient />
         <div style={{ height: 26 }} />
-        <Reveal text="29 家模型与套餐直连 · 11 种精选液态样式" delay={1.0} size={26} weight={500} color={C.dim} stagger={0.012} />
+        <Reveal text="支持 30+ 主流模型与套餐 · 11 种精选样式" delay={1.0} size={26} weight={500} color={C.dim} stagger={0.012} />
         <div style={{ height: 8 }} />
-        <Reveal text="订阅配额、积分与 API 余额同步 · 字号浓度实时预览" delay={1.3} size={26} weight={500} color={C.dim} stagger={0.012} />
+        <Reveal text="订阅配额、积分与 API 余额直连 · 实时预览" delay={1.3} size={26} weight={500} color={C.dim} stagger={0.012} />
       </div>
       <Img
         src={staticFile("shots/settings_demo_0_436x528.png")}
@@ -1541,7 +1576,7 @@ const AppsRow: React.FC<{ items: string[]; y: number; dir: 1 | -1; t: number; si
 
 const Apps: React.FC = () => {
   const { t, dur } = useTime();
-  const count = Math.round(interpolate(t, [0.2, 1.65], [0, 29], { ...clamp, easing: ease }));
+  const count = Math.round(interpolate(t, [0.2, 1.65], [0, 30], { ...clamp, easing: ease }));
   const size = 114;
   const step = size + 40;
   const rowA = ALL_APPS.slice(0, 15);
@@ -1555,9 +1590,9 @@ const Apps: React.FC = () => {
         <div
           style={{
             fontFamily: FONT,
-            fontSize: 228,
+            fontSize: 224,
             fontWeight: 700,
-            letterSpacing: -9,
+            letterSpacing: -8,
             lineHeight: 1,
             backgroundImage: `linear-gradient(100deg, ${C.water1}, ${C.water2})`,
             WebkitBackgroundClip: "text",
@@ -1566,10 +1601,10 @@ const Apps: React.FC = () => {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {count}
+          {count}+
         </div>
         <div style={{ height: 10 }} />
-        <Reveal text="家自研大模型与 Coding Plan，原生直连" delay={0.45} size={48} weight={700} align="center" stagger={0.025} />
+        <Reveal text="主流大模型与 Coding Plan · 持续接入更多" delay={0.45} size={48} weight={700} align="center" stagger={0.025} />
         <div style={{ height: 14 }} />
         <Reveal text="Claude · Codex · Cursor · Antigravity · Windsurf · Copilot · DeepSeek · Kimi · GLM · Qwen …" delay={0.9} size={25} weight={500} color={C.dim} align="center" stagger={0.008} letterSpacing={0.3} />
       </AbsoluteFill>

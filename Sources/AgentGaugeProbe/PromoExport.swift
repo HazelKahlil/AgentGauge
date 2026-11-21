@@ -314,6 +314,134 @@ enum PromoExport {
     }
 
     @MainActor
+    static func exportOpeningMultiStyles(outDir: String) async {
+        let t0 = Date()
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        let snaps = demoSnapshots()
+        let r1024 = NativeIconRenderer.makeOffscreenRenderer(side: 1024)
+        let r512 = NativeIconRenderer.makeOffscreenRenderer(side: 512)
+
+        // 1) Scene 3 · Diverse Multi-Style HD Heroes (3 x 1024px solos + 2 x 512px lineup companions)
+        let codexSnap = QuotaSnapshot(
+            agentID: .codex,
+            remainingPercent: 37,
+            planTier: "ChatGPT Pro Lite (5x)",
+            resetText: "19h 0m",
+            windows: [QuotaWindow(label: "5h 窗口", remainingPercent: 37, resetText: "19h 0m", isPrimary: true)],
+            sourceDescription: "promo"
+        )
+        let soloConfigs: [(AgentID, DockBadgeStyle, NumberColorMode, CGFloat, QuotaSnapshot, Bool)] = [
+            (.codex, .refTopTimerScrim, .smartInvert, 0.4, codexSnap, true),
+            (.grokbot, .braunAnalogNeedle, .obsidianBlack, 1.7, snaps[.grokbot]!, true),
+            (.cursor, .dualTrackHUD, .smartInvert, 2.9, snaps[.cursor]!, true),
+            (.claude, .retroLEDMatrix, .obsidianBlack, 3.8, QuotaSnapshot(
+                agentID: .claude, remainingPercent: 83, resetText: "2h 18m",
+                windows: [QuotaWindow(label: "5h", remainingPercent: 83, resetText: "2h 18m", isPrimary: true)],
+                sourceDescription: "promo"
+            ), false),
+            (.antigravity, .concentricAutoDodge, .smartInvert, 4.6, snaps[.antigravity]!, false)
+        ]
+        for (hi, cfg) in soloConfigs.enumerated() {
+            guard let url = cfg.0.installedAppURL else { continue }
+            var kicks: [Int: CGFloat] = [:]
+            for k in stride(from: 26, to: 240, by: 36) { kicks[k] = ((k / 36 + hi) % 2 == 0 ? 0.58 : -0.58) }
+            renderSequence(
+                renderer: cfg.5 ? r1024 : r512,
+                agent: cfg.0,
+                appURL: url,
+                frames: 240,
+                dir: "\(outDir)/seq/hd_\(cfg.0.rawValue)",
+                initialTiltVel: (hi % 2 == 0 ? 0.62 : -0.62),
+                style: cfg.1,
+                tone: cfg.2,
+                scale: 1.50,
+                startHover: 1.0,
+                seed: cfg.3,
+                impulses: kicks
+            ) { _ in cfg.4 }
+        }
+        print("PROMO multi-style HD heroes done", String(format: "%.1fs", Date().timeIntervalSince(t0)))
+
+        // 2) Scene 4 · DockDemo (all 6 AI icons alive simultaneously with 6 DISTINCT styles: 5 non-capsule + 1 capsule!)
+        let dockConfigs: [(AgentID, DockBadgeStyle, NumberColorMode, CGFloat, [Int: CGFloat], QuotaSnapshot)] = [
+            (.antigravity, .pureSplitText, .smartInvert, 1.0, [25: 0.72, 65: -0.45], snaps[.antigravity]!),
+            (.codex, .refTopTimerScrim, .smartInvert, 2.3, [110: -0.70, 150: 0.45], QuotaSnapshot(
+                agentID: .codex, remainingPercent: 82, resetText: "3h 12m",
+                windows: [QuotaWindow(label: "5h", remainingPercent: 82, resetText: "3h 12m", isPrimary: true)],
+                isWorking: true, sourceDescription: "promo"
+            )),
+            (.cursor, .dualTrackHUD, .smartInvert, 4.4, [95: 0.42], snaps[.cursor]!),
+            (.grokbot, .braunAnalogNeedle, .obsidianBlack, 3.1, [194: 0.72, 230: -0.45], snaps[.grokbot]!),
+            (.claude, .retroLEDMatrix, .obsidianBlack, 5.2, [175: -0.40], QuotaSnapshot(
+                agentID: .claude, remainingPercent: 83, resetText: "2h 18m",
+                windows: [QuotaWindow(label: "5h", remainingPercent: 83, resetText: "2h 18m", isPrimary: true)],
+                sourceDescription: "promo"
+            )),
+            (.workbuddy, .concentricAutoDodge, .smartInvert, 6.0, [140: 0.36], snaps[.workbuddy]!)
+        ]
+        for (id, style, tone, seed, kicks, snap) in dockConfigs {
+            guard let url = id.installedAppURL else { continue }
+            renderSequence(
+                renderer: r512,
+                agent: id,
+                appURL: url,
+                frames: 270,
+                dir: "\(outDir)/seq/wake_\(id.rawValue)",
+                initialTiltVel: 0.30,
+                style: style,
+                tone: tone,
+                scale: 1.50,
+                startHover: 1.0,
+                seed: seed,
+                impulses: kicks
+            ) { _ in snap }
+        }
+        print("PROMO multi-style Dock sequences done", String(format: "%.1fs", Date().timeIntervalSince(t0)))
+
+        // 3) Scene 5 · Macro 2x2 Draining Quartet (TopTimer + DynamicIsland + ApertureSweep + LowWaterDodge Capsule together!)
+        let drainFrames = 180
+        func drainLevel(_ f: Int) -> Double {
+            let a = 14.0, b = 150.0
+            let x = max(0, min(1, (Double(f) - a) / (b - a)))
+            let e = x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
+            return 94.0 - 76.0 * e // 94% -> 18%
+        }
+        let drainConfigs: [(AgentID, DockBadgeStyle, NumberColorMode, CGFloat)] = [
+            (.codex, .refTopTimerScrim, .smartInvert, 0.5),
+            (.claude, .topDynamicIsland, .smartInvert, 1.6),
+            (.cursor, .apertureSweep, .smartInvert, 2.7),
+            (.antigravity, .concentricAutoDodge, .smartInvert, 3.8)
+        ]
+        for (id, style, tone, seed) in drainConfigs {
+            guard let url = id.installedAppURL else { continue }
+            renderSequence(
+                renderer: r512,
+                agent: id,
+                appURL: url,
+                frames: drainFrames,
+                dir: "\(outDir)/seq/drain_\(id.rawValue)",
+                initialTiltVel: 0.45,
+                style: style,
+                tone: tone,
+                scale: 1.50,
+                startHover: 1.0,
+                seed: seed,
+                agitation: { f in (f > 14 && f < 150) ? 0.08 : 0 }
+            ) { f in
+                let lv = drainLevel(f)
+                return QuotaSnapshot(
+                    agentID: id,
+                    remainingPercent: lv,
+                    resetText: "19h 0m",
+                    windows: [QuotaWindow(label: "5h", remainingPercent: lv, resetText: "19h 0m", isPrimary: true)],
+                    sourceDescription: "promo"
+                )
+            }
+        }
+        print("PROMO multi-style drain quartet done", String(format: "%.1fs", Date().timeIntervalSince(t0)))
+    }
+
+    @MainActor
     static func exportHDHeroes(outDir: String) async {
         let t0 = Date()
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)

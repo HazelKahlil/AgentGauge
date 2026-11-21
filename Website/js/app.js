@@ -1128,14 +1128,17 @@
   function renderApps() {
     const grid = $("#appGrid");
     if (!grid.children.length) {
-      grid.innerHTML = APPS.map((a) => `<li data-cat="${a[2]}"><img src="${ICON(a[0])}" alt="" loading="lazy" width="58" height="58" /><span data-app-name="${a[0]}"></span><i style="background:${a[3]}"></i></li>`).join("");
+      grid.innerHTML = APPS.map((a) => `<li data-cat="${a[2]}"><img src="${ICON(a[0])}" alt="" loading="lazy" width="58" height="58" /><span data-app-name="${a[0]}"></span><i style="background:${a[3]}"></i></li>`).join("") +
+        `<li class="app-more" data-cat="more"><span class="more-badge">30+</span><span data-more-label></span><i style="background:#587BA3"></i></li>`;
     }
     $$("[data-app-name]", grid).forEach((s) => { const a = APPS.find((x) => x[0] === s.dataset.appName); s.textContent = appName(a[1]); });
-    const counts = { all: APPS.length, c: 0, a: 0 };
+    const moreLbl = $("[data-more-label]", grid);
+    if (moreLbl) moreLbl.textContent = t("apps.more");
+    const counts = { all: "30+", c: 0, a: 0 };
     APPS.forEach((a) => counts[a[2]]++);
     const fs = [["all", "apps.all"], ["c", "apps.coding"], ["a", "apps.ai"]];
     $("#appFilters").innerHTML = fs.map(([k, key]) => `<button type="button" class="filter${k === appFilter ? " on" : ""}" data-f="${k}">${t(key)}<sup>${counts[k]}</sup></button>`).join("");
-    $$("li", grid).forEach((li) => li.classList.toggle("dim", appFilter !== "all" && li.dataset.cat !== appFilter));
+    $$("li", grid).forEach((li) => li.classList.toggle("dim", appFilter !== "all" && li.dataset.cat !== "more" && li.dataset.cat !== appFilter));
   }
   $("#appFilters").addEventListener("click", (e) => {
     const b = e.target.closest("[data-f]");

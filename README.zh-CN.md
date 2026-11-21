@@ -10,7 +10,7 @@
     <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.2.0-141413?style=flat-square" alt="Release v1.2.0" /></a>
     <img src="https://img.shields.io/badge/系统-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/引擎-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
-    <img src="https://img.shields.io/badge/已支持-29%20家模型与套餐厂商-478577?style=flat-square" alt="29 家模型与套餐厂商" />
+    <img src="https://img.shields.io/badge/已支持-30%2B%20主流大模型与套餐-478577?style=flat-square" alt="30+ 主流大模型与套餐" />
     <a href="./LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-77756f?style=flat-square" alt="MIT License" /></a>
   </p>
 
@@ -53,8 +53,8 @@
       <p><strong>11 种精选样式 · 全系光学水波</strong><br />涵盖截图顶栏时间、动态极性反相字、光圈扇叶扫描、像素 LED 点阵、博朗圆弧指针与低水位避让——统一搭载招牌微泡折射液态着色器。</p>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="支持 29 家主流模型与套餐厂商" />
-      <p><strong>29 家真实计费厂商 · 拒绝假 100%</strong><br />严格聚焦拥有真实订阅配额、Coding Plan 积分或官方 API 余额池的自研模型与智能体，彻底剔除无配额本地壳。</p>
+      <img src="docs/assets/apps-matrix.jpg" width="100%" alt="支持 30+ 主流大模型与套餐厂商" />
+      <p><strong>30+ 主流模型与套餐 · 持续扩展更多</strong><br />聚焦拥有真实订阅配额、Coding Plan 积分或官方 API 余额池的自研大模型与智能体，持续接入更多主流厂商。</p>
     </td>
   </tr>
 </table>
@@ -65,7 +65,7 @@
 
 - **11 款纯图标精选指示样式 + 统一光学水波**：全新定制「截图顶栏时间、动态反相字、微晶描边字、同心 R 角避让、光圈扇叶扫描、像素 LED 点阵、双轨微仪表、博朗圆弧指针、底部 5 格晶块、顶部灵动微岛、顶部弧形光眉」，全系共享招牌微泡折射水波与浅色图标低水位自适应增强。
 - **重力稳态 120Hz 水波物理与悬停水平导轨**：消除异步位移抖动，升级临界阻尼水面恢复与相邻图标中垂线零延迟交接，左右横滑时悬停卡片严格沿水平导轨丝滑平移、绝不上下跳动。
-- **29 家真实配额厂商提纯与 API 余额一等公民**：剔除无计费体系的本地浏览器与空壳客户端；新增 DeepSeek / Kimi 官方货币余额池（如 `¥28.50`）、GitHub Copilot、Windsurf 本地状态与 Antigravity `AI Ultra` 套餐等级自动识别。
+- **30+ 主流模型与套餐直连 & API 余额一等公民**：聚焦真实订阅与计费厂商并持续扩展；新增 DeepSeek / Kimi 官方货币余额池（如 `¥28.50`）、GitHub Copilot、Windsurf 本地状态与 Antigravity `AI Ultra` 套餐等级自动识别。
 - **合盖休眠零功耗与自愈式底层防护**：新增系统睡眠/锁屏自动挂起、Dock 图块 Mach 通道 5 秒断路自愈及子进程确定性回收。
 
 ---
@@ -101,12 +101,12 @@ cd AgentGauge
 
 ---
 
-## 已支持的 29 家模型与套餐厂商
+## 已支持的主流模型与套餐厂商（30+ 持续扩展）
 
 | 类别 | 支持厂商与官方客户端 |
 | :--- | :--- |
-| **Coding Agent & AI IDE（17）** | ChatGPT / Codex, Antigravity, Claude, Cursor, Grok Bot, Windsurf, WorkBuddy, Trae, Kiro, VS Code (Copilot), Qoder, Zed, Warp, Devin, IntelliJ IDEA, PyCharm, WebStorm |
-| **自研大模型 · 官方套餐与 API（12）** | Gemini, Grok, DeepSeek, Kimi, 智谱 GLM, 通义千问 Qwen, 豆包 Doubao, MiniMax, Perplexity, Le Chat (Mistral), Manus, Poe |
+| **Coding Agent & AI IDE** | ChatGPT / Codex, Antigravity, Claude, Cursor, Grok Bot, Windsurf, WorkBuddy, Trae, Kiro, VS Code (Copilot), Qoder, Zed, Warp, Devin, IntelliJ IDEA, PyCharm, WebStorm |
+| **自研大模型 · 官方套餐与 API** | Gemini, Grok, DeepSeek, Kimi, 智谱 GLM, 通义千问 Qwen, 豆包 Doubao, MiniMax, Perplexity, Le Chat (Mistral), Manus, Poe —— *持续接入更多主流厂商* |
 
 ---
 
@@ -129,7 +129,7 @@ AgentGauge 从底层设计上坚持 **100% 本地运行、源码完全可审计*
 AgentGauge/
 ├── Sources/
 │   ├── CNativeDockTile/      # macOS 原生 Dock 图块底层桥接
-│   ├── AgentGaugeCore/       # 16-bit 半精度 Metal 液态着色器、状态存储与 29 家厂商 Provider
+│   ├── AgentGaugeCore/       # 16-bit 半精度 Metal 液态着色器、状态存储与 30+ 厂商 Provider
 │   ├── AgentGaugeApp/        # 菜单栏全局看板 (MenuBarPopoverView)、悬停卡片与设置工作台
 │   ├── AgentGaugeCleanup/    # 崩溃安全的原生 Dock 图标自动还原守护进程
 │   └── AgentGaugeProbe/      # 命令行诊断与图块渲染校验工具
