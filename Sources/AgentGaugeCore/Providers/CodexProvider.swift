@@ -8,15 +8,28 @@ private final class CodexSnapshotCache: @unchecked Sendable {
     private var cached: QuotaSnapshot?
     private var cachedAt: Date = .distantPast
 
+    func invalidate() {
+        lock.lock()
+        cached = nil
+        cachedAt = .distantPast
+        lock.unlock()
+    }
+
     func get(isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
         guard let snap = cached else { return nil }
-        if let reset = snap.resetsAt, Date() >= reset {
+        let now = Date()
+        if let reset = snap.resetsAt, now >= reset {
             return nil
         }
+        for w in snap.windows {
+            if let r = w.resetsAt, now >= r {
+                return nil
+            }
+        }
         let maxAge: TimeInterval = (isAppRunning || isWorking) ? 85.0 : 300.0
-        guard Date().timeIntervalSince(cachedAt) <= maxAge else {
+        guard now.timeIntervalSince(cachedAt) <= maxAge else {
             return nil
         }
         return snap
@@ -34,6 +47,10 @@ public struct CodexProvider: UsageProvider {
     public let agentID: AgentID = .codex
 
     public init() {}
+
+    public static func invalidateCache() {
+        CodexSnapshotCache.shared.invalidate()
+    }
 
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
@@ -101,19 +118,23 @@ public struct CodexProvider: UsageProvider {
                 )
             }
 
-            var windows: [QuotaWindow] = []
-            var primaryRemaining: Double?
-            var primaryReset: Date?
+            struct ParsedCodexWin {
+                let id: String
+                let label: String
+                let remaining: Double
+                let resetsAt: Date?
+                let isCoreGate: Bool
+            }
+
+            var parsedWins: [ParsedCodexWin] = []
 
             if let primary = rateLimits["primary"] as? [String: Any],
                let used = Self.doubleValue(primary["usedPercent"]) {
                 let remaining = max(0, min(100, 100.0 - used))
                 let resetDate = Self.dateValue(primary["resetsAt"])
                 let mins = primary["windowDurationMins"] as? Int
-                let label = Self.windowLabel(mins: mins, fallback: "周额度")
-                primaryRemaining = remaining
-                primaryReset = resetDate
-                windows.append(QuotaWindow(label: label, remainingPercent: remaining, resetsAt: resetDate, isPrimary: true))
+                let label = Self.windowLabel(mins: mins, fallback: "主窗口额度")
+                parsedWins.append(ParsedCodexWin(id: "core_primary", label: label, remaining: remaining, resetsAt: resetDate, isCoreGate: true))
             }
 
             if let secondary = rateLimits["secondary"] as? [String: Any],
@@ -121,11 +142,39 @@ public struct CodexProvider: UsageProvider {
                 let remaining = max(0, min(100, 100.0 - used))
                 let resetDate = Self.dateValue(secondary["resetsAt"])
                 let mins = secondary["windowDurationMins"] as? Int
-                let label = Self.windowLabel(mins: mins, fallback: "5h 窗口")
-                windows.append(QuotaWindow(label: label, remainingPercent: remaining, resetsAt: resetDate, isPrimary: primaryRemaining == nil))
-                if primaryRemaining == nil {
-                    primaryRemaining = remaining
-                    primaryReset = resetDate
+                let label = Self.windowLabel(mins: mins, fallback: "周额度")
+                parsedWins.append(ParsedCodexWin(id: "core_secondary", label: label, remaining: remaining, resetsAt: resetDate, isCoreGate: true))
+            }
+
+            // Surface any separate model-specific pools returned in `rateLimitsByLimitId` (e.g. o3 / pro / spark)
+            if let byId = rpc.rateLimits?["rateLimitsByLimitId"] as? [String: Any] {
+                let mainLimitId = (rateLimits["limitId"] as? String) ?? "codex"
+                for (limitKey, val) in byId.sorted(by: { $0.key < $1.key }) where limitKey != mainLimitId {
+                    guard let entry = val as? [String: Any],
+                          let p = entry["primary"] as? [String: Any],
+                          let used = Self.doubleValue(p["usedPercent"]) else { continue }
+                    let rem = max(0, min(100, 100.0 - used))
+                    let rDate = Self.dateValue(p["resetsAt"])
+                    let name = ((entry["limitName"] as? String)?.nilIfEmpty) ?? limitKey
+                    parsedWins.append(ParsedCodexWin(id: "extra_\(limitKey)", label: "\(name) 额度", remaining: rem, resetsAt: rDate, isCoreGate: false))
+                }
+            }
+
+            // Series-gate bottleneck law: true usable remaining = min(5h window, 7d weekly window)
+            let coreGates = parsedWins.filter(\.isCoreGate)
+            let limiting = (coreGates.isEmpty ? parsedWins : coreGates)
+                .min(by: { $0.remaining < $1.remaining })
+
+            var windows: [QuotaWindow] = []
+            if let lim = limiting {
+                let ordered = [lim] + parsedWins.filter { $0.id != lim.id }
+                windows = ordered.enumerated().map { idx, w in
+                    QuotaWindow(
+                        label: w.label,
+                        remainingPercent: w.remaining,
+                        resetsAt: w.resetsAt,
+                        isPrimary: idx == 0
+                    )
                 }
             }
 
@@ -142,17 +191,17 @@ public struct CodexProvider: UsageProvider {
 
             let snap = QuotaSnapshot(
                 agentID: .codex,
-                remainingPercent: primaryRemaining,
+                remainingPercent: limiting?.remaining,
                 accountEmail: resolvedEmail,
                 planTier: resolvedPlan,
-                primaryLabel: windows.first(where: { $0.isPrimary })?.label ?? "周额度",
-                resetsAt: primaryReset,
+                primaryLabel: limiting?.label ?? "周额度",
+                resetsAt: limiting?.resetsAt,
                 windows: windows,
                 subtitle: subtitleParts.isEmpty ? nil : subtitleParts.joined(separator: " · "),
                 isWorking: isWorking,
                 sourceDescription: "Codex 本地账号"
             )
-            if primaryRemaining != nil {
+            if limiting != nil {
                 CodexSnapshotCache.shared.set(snap)
             }
             return snap
@@ -284,7 +333,7 @@ public struct CodexProvider: UsageProvider {
                 }
 
                 let requests: [[String: Any]] = [
-                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.2.1"]]],
+                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.3.0"]]],
                     ["jsonrpc": "2.0", "method": "initialized", "params": [:]],
                     ["jsonrpc": "2.0", "id": 2, "method": "account/read", "params": [:]],
                     ["jsonrpc": "2.0", "id": 3, "method": "account/rateLimits/read", "params": [:]]
@@ -384,9 +433,9 @@ public struct CodexProvider: UsageProvider {
 
     private static func windowLabel(mins: Int?, fallback: String) -> String {
         guard let mins else { return fallback }
-        if mins >= 10080 { return "周额度" }
-        if mins >= 1440 { return "\(mins / 1440)天额度" }
-        if mins >= 60 { return "\(mins / 60)小时额度" }
-        return "\(mins)分钟额度"
+        if mins >= 10080 { return "7d 周额度" }
+        if mins >= 1440 { return "\(mins / 1440)d 额度" }
+        if mins >= 60 { return "\(mins / 60)h 会话额度" }
+        return "\(mins)m 额度"
     }
 }

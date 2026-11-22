@@ -33,4 +33,33 @@ public enum ProviderRegistry {
             }
         }
     }
+
+    /// Invalidates in-memory provider caches when the user explicitly clicks Manual Refresh.
+    public static func invalidateCaches(for agentID: AgentID? = nil) {
+        if let id = agentID {
+            switch id {
+            case .antigravity:
+                AntigravityProvider.invalidateCache()
+            case .gemini:
+                AntigravityProvider.invalidateCache()
+            case .codex:
+                CodexProvider.invalidateCache()
+            case .claude:
+                ClaudeProvider.invalidateCache()
+            case .cursor, .grokbot:
+                CursorProvider.invalidateCache()
+            case .workbuddy:
+                WorkBuddyProvider.invalidateCache()
+            default:
+                EcosystemCacheControl.invalidate(for: id)
+            }
+        } else {
+            AntigravityProvider.invalidateCache()
+            CodexProvider.invalidateCache()
+            ClaudeProvider.invalidateCache()
+            CursorProvider.invalidateCache()
+            WorkBuddyProvider.invalidateCache()
+            EcosystemCacheControl.invalidate(for: nil)
+        }
+    }
 }

@@ -733,8 +733,8 @@ struct TooltipContentView: View {
                             }
                         }
                     }
-                } else if let rem = snapshot.remainingPercent, snapshot.windows.count <= 1 {
-                    // Single-window sleek full-width liquid bar
+                } else if let rem = snapshot.remainingPercent {
+                    // Single-window or `.primaryOnly` sleek full-width liquid bar
                     GeometryReader { geo in
                         let rowAccent = barColor(for: rem, base: accent, textMode: false)
                         ZStack(alignment: .leading) {
@@ -791,7 +791,7 @@ struct TooltipContentView: View {
             return "\(c) 积分"
         }
         guard let rem = snap.remainingPercent else { return "—" }
-        return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
+        return "\(QuotaSnapshot.displayPercentInt(rem))\(showPercentageSign ? "%" : "")"
     }
 
     private func heroSubstatusString(for snap: QuotaSnapshot) -> String? {
@@ -833,7 +833,7 @@ struct TooltipContentView: View {
     }
 
     private func formatNum(_ val: Double) -> String {
-        let num = Int(round(val))
+        let num = QuotaSnapshot.displayPercentInt(val)
         return showPercentageSign ? "\(num)%" : "\(num)"
     }
 }

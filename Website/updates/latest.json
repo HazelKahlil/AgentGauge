@@ -1,0 +1,18 @@
+{
+  "build" : 130,
+  "dmgUrl" : "https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg",
+  "fallbackZipUrl" : "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",
+  "notes" : [
+    "支持远程更新推送：菜单栏与设置页一键静默下载、Ed25519 签名校验、原子覆盖并自动重启",
+    "Antigravity 独立分离 Gemini 与 Anthropic 模型限额池，<0.5ms 追踪当前对话模型并支持四档池切换",
+    "修复 Claude 低用量比例缩放，Claude 与 Codex 统一执行 min(5h, 周限) 木桶串联规则",
+    "升级双轨微仪表双池低水位变红预警，手动刷新立即穿透全部缓存"
+  ],
+  "publishedAt" : "2026-11-22T15:06:45Z",
+  "sha256" : "bfa214d8006a3e2cdcac20b51cd987bb36c4219354859b73c2992f3820d4af19",
+  "signature" : "JOUcHRI92rudTS0NWPuIgfQbuYQ65VQ5AHUzPqF6fTqwmLXWm2zMiSg/Awe3xNJhtzMZJ6Pdaui1GJlPm043Ag==",
+  "title" : "v1.3.0 · 远程推送热更新与第一性原理双算力池引擎",
+  "urgency" : "recommended",
+  "version" : "1.3.0",
+  "zipUrl" : "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip"
+}

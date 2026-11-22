@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.0] - 2026-11-22
+
+### Added / 新增
+
+- **Cryptographically Signed Remote Push Auto-Updater (`UpdateManager`)**: Added native in-app remote update notifications (menu bar indicator dot, one-click popover banner, and Settings version inspector) backed by Ed25519 digital signatures (`CryptoKit`) + SHA-256 verification over `usage.komorebi.date/updates/latest.json` with automatic GitHub Releases fallback, atomic `/Applications/AgentGauge.app` replacement without Gatekeeper re-quarantine, automatic takeover/cleanup of older `v1.1.0–v1.2.1` memory processes, on-disk bundle replacement hot-restart, evergreen CDN redirects (`_redirects`), and a one-line installer/upgrader (`curl -fsSL https://usage.komorebi.date/install.sh | bash`).  
+  **新增 Ed25519 数字签名远程推送热更新系统（`UpdateManager`）**：支持在菜单栏角标、弹窗横幅与设置顶部接收远程版本推送，基于 `CryptoKit` Ed25519 签名 + SHA-256 双重校验静默下载更新包、原子覆盖 `/Applications/AgentGauge.app` 并自动重启（免重复触发 Gatekeeper 弹窗）；同时支持启动自动接管清理 `v1.1.0–v1.2.1` 旧版驻留进程、手动拖入覆盖自动热重启、历史旧链接自动 302 跳转至最新包，以及一行命令覆盖升级（`curl -fsSL https://usage.komorebi.date/install.sh | bash`）。
+
+### Fixed / 修复
+
+- **Antigravity `Gemini` vs `Anthropic` Dual-Pool Isolation & Real Desktop Model Tracking**: Fixed a major cross-pool masking issue where Antigravity's independent `Gemini` (`gemini-5h`, `gemini-weekly`) and `Anthropic` (`3p-5h`, `3p-weekly`) quota pools could hide one another because `agy` CLI reported its own CLI default model rather than the active model in Antigravity Desktop. `AntigravityProvider` now reads the active Desktop conversation model in `<0.5ms` upon Dock hover / Menu Bar wake, aligns `isPrimary` strictly with the limiting bucket, labels untouched rolling `5h` buckets honestly as `未消耗`, and exposes a 4-mode pool selector (`跟随模型` / `双池最低` / `Gemini` / `Anthropic`).  
+  **修复 Antigravity 内 `Gemini` 与 `Anthropic` 双独立模型池隔离与真实活跃模型识别**：解决此前依赖 `agy` CLI 默认模型而忽略 Antigravity 桌面端当前实际使用模型（例如 Anthropic 周限仅剩 `2%` 却仍显示 Gemini 池 `63%`）的问题。现支持在鼠标靠近 Dock 或打开菜单栏时以 `<0.5ms` 实时识别桌面端当前对话模型池，严格对齐主读数与高亮行，将未消耗的 `5h` 滚动窗标为 `未消耗`，并在菜单栏与设置卡片提供四档主读数池切换（`跟随模型` / `双池最低` / `Gemini` / `Anthropic`）。
+- **Anthropic `Claude` `0..100` Utilization Scaling & Series-Gate Bottleneck Law (`Claude` & `Codex`)**: Fixed a `100×` scaling bug in `ClaudeProvider` when `utilization <= 1.0%` (which previously misread `0.5%–1.0%` used as `50%–100%` used), and enforced `min(5h, 7d weekly)` bottleneck dominance across both `ClaudeProvider` and `CodexProvider` so an exhausted weekly cap is never masked as `100%` after a 5-hour session reset.  
+  **修复 Claude 低消耗区间 `100×` 比例跳变及 Claude / Codex 多窗口木桶串联定律**：修复 `ClaudeProvider` 在 `utilization <= 1.0%` 时误按小数放大 100 倍导致刚用 `1%` 就掉成 `0%` 的计算缺陷；并在 `Claude` 与 `Codex` 中统一执行 `min(5h 会话窗口, 7d 周总额度)` 木桶串联规则，杜绝周限额见底但 5 小时窗口重置后假满血显示 `100%` 的误报。
+- **Standalone `Gemini`, `Cursor` & `Grok Bot` Pool Isolation, `Dual-Track HUD` & Manual Refresh**: Isolated standalone `Gemini` from Antigravity's `Anthropic` pool, guarded `Grok Bot` ↔ `Cursor` live quota sharing behind strict account-slot verification with single-flight deduplication, fixed `Dual-Track HUD` (`#09`) duplicating the weekly bar instead of rendering `5h + Weekly` (or `Gemini + Anthropic` on Antigravity) with low-quota alert colors, restored the missing progress bar in `.primaryOnly` tooltip mode, added boundary-honest percentage rounding (`0.1%–0.9% → 1%`, `99.1%–99.9% → 99%`), and made Manual Refresh invalidate all in-memory provider caches immediately.  
+  **修复独立 `Gemini` / `Cursor` / `Grok Bot` 账号池边界、双轨微仪表与手动刷新缓存穿透**：隔离独立 `Gemini` 应用与 Antigravity 的 Anthropic 池；为 `Grok Bot` 与 `Cursor` 增加严格同账号槽位校验与并发请求合并；修复 `双轨微仪表` 在周限成为瓶颈时双轨重复显示同一数值及低水位不变红的问题；补齐「仅主额度」悬停模式缺失的进度条；引入临界诚实取整（未耗尽不显示 `0%`、已消耗不显示 `100%`），并让手动点击「刷新」立即穿透全部内存缓存。
+
+---
+
 ## [1.2.1] - 2026-11-22
 
 ### Fixed / 修复

@@ -1,0 +1,9 @@
+# Evergreen OTA & Legacy Installer Redirects
+# Ensures any user or cached post clicking an older versioned DMG link automatically receives the newest build!
+/downloads/AgentGauge-v1.1.0-macOS.dmg  /downloads/AgentGauge-macOS.dmg  302
+/downloads/AgentGauge-v1.1.2-macOS.dmg  /downloads/AgentGauge-macOS.dmg  302
+/downloads/AgentGauge-v1.2.0-macOS.dmg  /downloads/AgentGauge-macOS.dmg  302
+/downloads/AgentGauge-v1.2.1-macOS.dmg  /downloads/AgentGauge-macOS.dmg  302
+/downloads/AgentGauge-v1.2.2-macOS.dmg  /downloads/AgentGauge-macOS.dmg  302
+/downloads/latest.dmg                   /downloads/AgentGauge-macOS.dmg  302
+/downloads/latest.zip                   /downloads/AgentGauge-macOS.zip  302

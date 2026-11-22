@@ -48,6 +48,22 @@ private final class EcosystemSnapshotCache: @unchecked Sendable {
     private var ghToken: String?
     private var ghTokenAt: Date = .distantPast
 
+    func invalidate(for id: AgentID? = nil) {
+        lock.lock()
+        if let id {
+            snapshots.removeValue(forKey: id)
+            if id == .vscode {
+                ghToken = nil
+                ghTokenAt = .distantPast
+            }
+        } else {
+            snapshots.removeAll()
+            ghToken = nil
+            ghTokenAt = .distantPast
+        }
+        lock.unlock()
+    }
+
     func snapshot(for id: AgentID, maxAge: TimeInterval) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
@@ -77,6 +93,12 @@ private final class EcosystemSnapshotCache: @unchecked Sendable {
         ghToken = tok
         ghTokenAt = Date()
         lock.unlock()
+    }
+}
+
+public enum EcosystemCacheControl {
+    public static func invalidate(for id: AgentID?) {
+        EcosystemSnapshotCache.shared.invalidate(for: id)
     }
 }
 

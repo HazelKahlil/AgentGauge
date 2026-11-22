@@ -202,9 +202,11 @@ enum SettingsWindowMetrics {
 
 struct SettingsWindowView: View {
     @ObservedObject var store = AgentGaugeStore.shared
+    @ObservedObject var updater = UpdateManager.shared
     @State private var isLogsExpanded = false
     @State private var showCatalog = false
     @State private var showBadgeStudio = false
+    @State private var showUpdatePopover = false
     var onHeightChange: ((CGFloat) -> Void)?
 
     private var currentHeight: CGFloat {
@@ -377,7 +379,7 @@ struct SettingsWindowView: View {
                 store.toggleAgent(agentID, enabled: enabled)
             },
             onRefresh: {
-                Task { await store.refresh(agentID: agentID) }
+                Task { await store.refresh(agentID: agentID, forceWebProbe: true) }
             },
             onLogin: {
                 store.openWebLogin(for: agentID)
@@ -402,12 +404,7 @@ struct SettingsWindowView: View {
                 Text("AgentGauge")
                     .font(.system(size: 14.5, weight: .semibold, design: .rounded))
 
-                Text("v1.2.1")
-                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 1.5)
-                    .background(Color.primary.opacity(0.06), in: Capsule())
+                versionAndUpdatePill
             }
 
             Spacer()
@@ -453,6 +450,69 @@ struct SettingsWindowView: View {
             }
         }
         .frame(height: 26)
+    }
+
+    @ViewBuilder
+    private var versionAndUpdatePill: some View {
+        Button {
+            showUpdatePopover.toggle()
+            if case .idle = updater.state {
+                Task { await updater.checkForUpdates(userInitiated: true) }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                switch updater.state {
+                case .available(let m):
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 5, height: 5)
+                    Text("有更新 v\(m.version)")
+                        .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Color.accentColor)
+
+                case .downloading(_, let p):
+                    Text("下载中 \(Int(round(p * 100)))%")
+                        .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color.accentColor)
+
+                case .installing:
+                    Text("重启更新中…")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+
+                case .checking:
+                    Text("检查更新…")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                case .upToDate:
+                    Text("v\(updater.currentVersion) · 最新")
+                        .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                default:
+                    Text("v\(updater.currentVersion)")
+                        .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 6.5)
+            .padding(.vertical, 2)
+            .background(
+                updater.state.hasUnreadUpdate ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(updater.state.hasUnreadUpdate ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 0.7)
+            )
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .help("点击检查远程推送更新与版本状态")
+        .popover(isPresented: $showUpdatePopover, arrowEdge: .bottom) {
+            UpdateInspectorPopover(updater: updater)
+        }
     }
 
     private var statusDotColor: Color {
@@ -870,6 +930,7 @@ private struct LogsSlideUpDrawer: View {
         case "WorkBuddy": return Color(nsColor: AgentID.workbuddy.defaultAccentColor)
         case "Grok Bot": return Color(nsColor: AgentID.grokbot.defaultAccentColor)
         case "Metal", "NativeTile": return Color(nsColor: MineralColorPreset.curated[2].nsColor)
+        case "Update": return .accentColor
         default: return .secondary
         }
     }
@@ -1099,7 +1160,7 @@ private struct AgentBentoCard: View, Equatable {
         }
         if snap.windows.count > 1 {
             let parts = snap.windows.prefix(5).map {
-                "\($0.label.replacingOccurrences(of: " (当前)", with: "")): \(Int(round($0.remainingPercent)))\(showPercentageSign ? "%" : "") (\($0.formattedCountdown()))"
+                "\($0.label.replacingOccurrences(of: " (当前)", with: "")): \(QuotaSnapshot.displayPercentInt($0.remainingPercent))\(showPercentageSign ? "%" : "") (\($0.formattedCountdown()))"
             }
             lines.append(parts.joined(separator: "\n"))
         }
@@ -1117,6 +1178,7 @@ private struct AgentBentoCard: View, Equatable {
 // MARK: - Per-Agent Account, Subscription Tier & Quota Inspector Popover
 
 private struct AgentDetailPopover: View {
+    @ObservedObject var store = AgentGaugeStore.shared
     let agentID: AgentID
     let snapshot: QuotaSnapshot?
     let showPercentageSign: Bool
@@ -1177,6 +1239,41 @@ private struct AgentDetailPopover: View {
                 }
             }
 
+            if agentID == .antigravity {
+                Divider().opacity(0.45)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("图标主读数池（Gemini 与 Anthropic 独立计费）")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 3) {
+                        ForEach(AntigravityPoolFocus.allCases) { mode in
+                            let isSelected = (store.antigravityPoolFocus == mode)
+                            Button {
+                                store.antigravityPoolFocus = mode
+                            } label: {
+                                Text(mode.shortTitle)
+                                    .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 20)
+                                    .background(isSelected ? accent.opacity(0.18) : Color.clear, in: Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(isSelected ? accent.opacity(0.40) : Color.clear, lineWidth: 0.7)
+                                    )
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                            .help(mode.helpDescription)
+                        }
+                    }
+                    .padding(2.5)
+                    .background(Color.primary.opacity(0.055), in: Capsule())
+                }
+            }
+
             if let wins = snapshot?.windows, !wins.isEmpty {
                 Divider().opacity(0.45)
                 VStack(alignment: .leading, spacing: 4.5) {
@@ -1187,8 +1284,9 @@ private struct AgentDetailPopover: View {
                                 .foregroundStyle(win.isPrimary ? .primary : .secondary)
                                 .lineLimit(1)
                             Spacer()
-                            Text("\(Int(round(win.remainingPercent)))\(showPercentageSign ? "%" : "")")
+                            Text("\(QuotaSnapshot.displayPercentInt(win.remainingPercent))\(showPercentageSign ? "%" : "")")
                                 .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(win.remainingPercent <= 15 ? Color.red : .primary)
                             Text(win.formattedCountdown())
                                 .font(.system(size: 10).monospacedDigit())
                                 .foregroundStyle(.secondary)
@@ -2271,5 +2369,186 @@ private struct BadgeStyleMiniDiagram: View {
                 .strokeBorder(Color.primary.opacity(0.24), lineWidth: 0.8)
         }
         .frame(width: 17, height: 17)
+    }
+}
+
+// MARK: - Remote Push Update Inspector & One-Click Installer Popover
+
+private struct UpdateInspectorPopover: View {
+    @ObservedObject var updater: UpdateManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.accentColor)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("远程更新与版本管理")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Text("当前版本 v\(updater.currentVersion) (Build \(updater.currentBuild))")
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            Divider().opacity(0.45)
+
+            switch updater.state {
+            case .available(let m):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(m.title ?? "发现新版本 v\(m.version)")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+
+                    if !m.notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 3.5) {
+                            ForEach(Array(m.notes.prefix(4).enumerated()), id: \.offset) { _, note in
+                                HStack(alignment: .top, spacing: 5) {
+                                    Text("•")
+                                        .font(.system(size: 10.5, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    Text(note)
+                                        .font(.system(size: 10.5))
+                                        .foregroundStyle(.primary.opacity(0.88))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        Task { await updater.installUpdate(m) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "bolt.horizontal.circle.fill")
+                                .font(.system(size: 11))
+                            Text("一键覆盖更新至 v\(m.version) 并自动重启")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 26)
+                        .foregroundStyle(.white)
+                        .background(Color.accentColor, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
+                    .padding(.top, 2)
+                }
+
+            case .downloading(let m, let progress):
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("正在下载 v\(m.version)…")
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Text("\(Int(round(progress * 100)))%")
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    }
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                }
+
+            case .installing(let m):
+                HStack(spacing: 7) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("已通过签名校验，正在覆盖安装 v\(m.version) 并自动重启…")
+                        .font(.system(size: 11, weight: .medium))
+                }
+
+            case .checking:
+                HStack(spacing: 7) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在连接全球 CDN 检查远程推送…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+            case .upToDate:
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
+                    Text("当前已是最新版本（v\(updater.currentVersion)）")
+                        .font(.system(size: 11, weight: .medium))
+                }
+
+            case .failed(let msg, let retryable):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(msg)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let m = retryable {
+                        Button("重试覆盖更新 v\(m.version)") {
+                            Task { await updater.installUpdate(m) }
+                        }
+                        .controlSize(.small)
+                        .appleNativeGlassButton(prominent: true)
+                    }
+                }
+
+            case .idle:
+                Text("支持 Ed25519 数字签名与 SHA-256 双重校验，发现新版本时自动在菜单栏与顶部提示一键无感覆盖升级。")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider().opacity(0.45)
+
+            HStack {
+                Text("启动与后台自动检查更新")
+                    .font(.system(size: 11))
+                Spacer()
+                Toggle("", isOn: $updater.autoCheckUpdates)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .focusEffectDisabled()
+            }
+
+            HStack {
+                Button {
+                    Task { await updater.checkForUpdates(userInitiated: true) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text("立即检查更新")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 23)
+                    .nativeGlassCapsuleButton()
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+
+                Spacer()
+
+                Button {
+                    if let url = URL(string: "https://usage.komorebi.date/#changelog") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Text("更新日志 ↗")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 9)
+                        .frame(height: 23)
+                        .nativeGlassCapsuleButton()
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+            }
+        }
+        .padding(12)
+        .frame(width: 276)
     }
 }

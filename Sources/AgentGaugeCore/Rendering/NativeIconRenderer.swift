@@ -712,24 +712,47 @@ public final class NativeIconRenderer {
             ? nil
             : rawCountdown
 
-        let secondaryPct: Double = {
-            if let wk = snapshot.windows.first(where: { $0.label.contains("周") || $0.label.lowercased().contains("week") }) {
-                return wk.remainingPercent
+        let (primaryTrackPct, secondaryPct): (Double, Double) = {
+            if snapshot.agentID == .antigravity {
+                let gemMin = snapshot.windows
+                    .filter { $0.label.localizedCaseInsensitiveContains("gemini") }
+                    .map(\.remainingPercent)
+                    .min()
+                let antMin = snapshot.windows
+                    .filter { $0.label.localizedCaseInsensitiveContains("anthropic") || $0.label.localizedCaseInsensitiveContains("claude") }
+                    .map(\.remainingPercent)
+                    .min()
+                if let g = gemMin, let a = antMin {
+                    return (g, a)
+                }
+            }
+            let shortWin = snapshot.windows.first {
+                $0.label.contains("5h") || $0.label.contains("会话") || $0.label.contains("小时")
+            }
+            let weekWin = snapshot.windows.first {
+                $0.label.contains("周") || $0.label.lowercased().contains("week")
+            }
+            if let sw = shortWin, let ww = weekWin, sw.label != ww.label {
+                return (sw.remainingPercent, ww.remainingPercent)
+            }
+            if let ww = weekWin, abs(ww.remainingPercent - remaining) > 0.05 {
+                return (remaining, ww.remainingPercent)
             }
             if snapshot.windows.count >= 2 {
-                return snapshot.windows[1].remainingPercent
+                return (snapshot.windows[0].remainingPercent, snapshot.windows[1].remainingPercent)
             }
-            return remaining
+            return (remaining, remaining)
         }()
 
         let remKey = Int(round(remaining))
+        let trk1Key = Int(round(primaryTrackPct))
         let secKey = Int(round(secondaryPct))
         let scKey = Int(round(relScale * 100))
         let opKey = Int(round(relOpacity * 100))
         let hexKey = waterColor.srgbHexString
         let cdKey = countdownStr ?? "-"
         let darkKey = cached.isDark ? "D" : "L"
-        let key = "rgba-v8-\(darkKey)-\(params.badgeStyle.rawValue)-\(params.numberColorMode.rawValue)-\(remKey)-\(secKey)-\(scKey)-\(opKey)-\(hexKey)-\(labelText)-\(cdKey)-\(side)-\(Int(bRect.minX))-\(Int(bRect.minY))"
+        let key = "rgba-v9-\(darkKey)-\(params.badgeStyle.rawValue)-\(params.numberColorMode.rawValue)-\(remKey)-\(trk1Key)-\(secKey)-\(scKey)-\(opKey)-\(hexKey)-\(labelText)-\(cdKey)-\(side)-\(Int(bRect.minX))-\(Int(bRect.minY))"
 
         if let hit = labelTexCache[key] {
             return hit
@@ -1142,22 +1165,36 @@ public final class NativeIconRenderer {
             let y1 = hudRect.minY + hudH * 0.36
             let y2 = hudRect.minY + hudH * 0.67
 
-            // Track 1: Primary 5h quota
+            // Track 1: Short session window (or Gemini pool on Antigravity)
+            let trk1RGB: (CGFloat, CGFloat, CGFloat) = if primaryTrackPct <= 15 {
+                (1.0, 0.27, 0.23)
+            } else if primaryTrackPct <= 30 {
+                (1.0, 0.62, 0.04)
+            } else {
+                (vividTheme.redComponent, vividTheme.greenComponent, vividTheme.blueComponent)
+            }
             ctx.saveGState()
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y1 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)
             ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.16))
             ctx.fillPath()
 
-            let w1 = max(trackH, trackW * CGFloat(max(0, min(100, remaining)) / 100.0))
-            ctx.setShadow(offset: .zero, blur: S * 0.025, color: cgColor(accentRGB, 0.75))
+            let w1 = max(trackH, trackW * CGFloat(max(0, min(100, primaryTrackPct)) / 100.0))
+            ctx.setShadow(offset: .zero, blur: S * 0.025, color: cgColor(trk1RGB, 0.75))
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y1 - trackH * 0.5, width: w1, height: trackH), radius: trackH * 0.5)
-            ctx.setFillColor(cgColor(accentRGB, 1.0))
+            ctx.setFillColor(cgColor(trk1RGB, 1.0))
             ctx.fillPath()
             ctx.restoreGState()
 
-            // Track 2: Secondary / Weekly emerald quota
+            // Track 2: Weekly window (or Anthropic pool on Antigravity), with low-quota alert color!
+            let trk2RGB: (CGFloat, CGFloat, CGFloat) = if secondaryPct <= 15 {
+                (1.0, 0.27, 0.23)
+            } else if secondaryPct <= 30 {
+                (1.0, 0.62, 0.04)
+            } else {
+                (0.37, 0.92, 0.83)
+            }
             ctx.saveGState()
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y2 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)
@@ -1167,7 +1204,7 @@ public final class NativeIconRenderer {
             let w2 = max(trackH, trackW * CGFloat(max(0, min(100, secondaryPct)) / 100.0))
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y2 - trackH * 0.5, width: w2, height: trackH), radius: trackH * 0.5)
-            ctx.setFillColor(CGColor(srgbRed: 0.37, green: 0.92, blue: 0.83, alpha: 1.0))
+            ctx.setFillColor(cgColor(trk2RGB, 1.0))
             ctx.fillPath()
             ctx.restoreGState()
 

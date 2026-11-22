@@ -29,6 +29,9 @@ final class AgentGaugeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Ensure any older running instance (e.g. v1.1.0–v1.2.1 in memory after Finder drag-replace) yields cleanly!
+        UpdateManager.terminateOlderRunningInstancesIfNeeded()
+
         if CommandLine.arguments.contains("--promo-dark") {
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }
@@ -43,6 +46,9 @@ final class AgentGaugeAppDelegate: NSObject, NSApplicationDelegate {
         setupSignalHandlers()
 
         store.start()
+        if !CommandLine.arguments.contains("--promo-demo-data") {
+            UpdateManager.shared.start()
+        }
 
         if promoPopoverAgent != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
@@ -59,6 +65,7 @@ final class AgentGaugeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        UpdateManager.shared.stop()
         AgentGaugeStore.shared.shutdown()
     }
 
@@ -95,30 +102,51 @@ final class AgentGaugeAppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = Self.makeMenuBarTemplateIcon()
+            button.image = Self.makeMenuBarTemplateIcon(hasUpdateDot: UpdateManager.shared.state.hasUnreadUpdate)
             button.image?.isTemplate = true
             button.target = self
             button.action = #selector(togglePopover(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+
+        UpdateManager.shared.$state
+            .map(\.hasUnreadUpdate)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] hasUpdate in
+                guard let btn = self?.statusItem?.button else { return }
+                btn.image = Self.makeMenuBarTemplateIcon(hasUpdateDot: hasUpdate)
+                btn.image?.isTemplate = true
+            }
+            .store(in: &cancellables)
     }
 
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            AgentGaugeStore.shared.syncFastLocalStateOnUIWake()
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             popover.contentViewController?.view.window?.makeFirstResponder(nil)
         }
     }
 
-    /// Crisp 18x18 monochrome template icon matching Concept 01 (Liquid Wave Vessel + back wave + knockout bubble).
-    private static func makeMenuBarTemplateIcon() -> NSImage {
+    /// Crisp 18x18 monochrome template icon matching Concept 01 (Liquid Wave Vessel + back wave + knockout bubble + optional update dot).
+    private static func makeMenuBarTemplateIcon(hasUpdateDot: Bool = false) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let img = NSImage(size: size, flipped: false) { _ in
             let rect = NSRect(x: 1.8, y: 1.8, width: 14.4, height: 14.4)
             let squircle = NSBezierPath(roundedRect: rect, xRadius: 3.6, yRadius: 3.6)
+
+            NSGraphicsContext.saveGraphicsState()
+            if hasUpdateDot {
+                // Carve clean halo around top-right update dot so it reads sharply on any wallpaper
+                let clipPath = NSBezierPath(rect: NSRect(origin: .zero, size: size))
+                clipPath.windingRule = .evenOdd
+                clipPath.appendOval(in: NSRect(x: 12.1, y: 12.1, width: 5.2, height: 5.2))
+                clipPath.addClip()
+            }
 
             NSColor.black.setStroke()
             squircle.lineWidth = 1.4
@@ -156,6 +184,12 @@ final class AgentGaugeAppDelegate: NSObject, NSApplicationDelegate {
             NSColor.black.setFill()
             front.fill()
             NSGraphicsContext.restoreGraphicsState()
+            NSGraphicsContext.restoreGraphicsState()
+
+            if hasUpdateDot {
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 13.0, y: 13.0, width: 3.4, height: 3.4)).fill()
+            }
             return true
         }
         img.isTemplate = true

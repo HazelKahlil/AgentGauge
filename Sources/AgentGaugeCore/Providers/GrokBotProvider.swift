@@ -2,8 +2,8 @@ import AppKit
 import Foundation
 
 /// Native provider for Grok Bot (`com.anysphere.sand`):
-/// 1. Reads Grok Bot's own persisted `weekly-usage.cache` & `account-slot` in `~/Library/Application Support/Grok Bot/sand-client-persistence/` (0ms, zero network flakiness, never fabricates fake 100%!);
-/// 2. Cross-checks live Anysphere/xAI unified quota API when shared account token is available.
+/// 1. Reads Grok Bot's own persisted `weekly-usage.cache` & `account-slot` in `~/Library/Application Support/Grok Bot/sand-client-persistence/` (matched strictly to active account slot);
+/// 2. Cross-checks live Anysphere/xAI unified quota API ONLY when Cursor & Grok Bot share the same linked xAI/Anysphere account.
 public struct GrokBotProvider: UsageProvider {
     public let agentID: AgentID = .grokbot
 
@@ -14,15 +14,26 @@ public struct GrokBotProvider: UsageProvider {
         let cursorAuth = CursorProvider.readLocalAuthState()
         let localCache = Self.readSandPersistenceUsage(matchingEmailFrom: cursorAuth)
 
-        // 1. If shared Anysphere/xAI token is present, try live API first for up-to-the-second precision
-        if cursorAuth.accessToken != nil {
+        // 1. Only share live Cursor/Anysphere API when verified as the SAME xAI-linked account!
+        let isSameUnifiedAccount: Bool = {
+            if let slot = localCache?.activeSlot, let cAuthId = cursorAuth.authId, !slot.isEmpty, slot == cAuthId {
+                return true
+            }
+            if cursorAuth.signUpType?.lowercased() == "grok" {
+                return localCache == nil || localCache?.activeSlot?.lowercased().hasPrefix("grok|") == true
+            }
+            return false
+        }()
+
+        if isSameUnifiedAccount, cursorAuth.accessToken != nil {
             let liveCursor = await CursorProvider().fetchSnapshot()
             if let liveRem = liveCursor.remainingPercent {
                 let grokWindows = liveCursor.windows.map { win in
                     QuotaWindow(
                         label: win.label
                             .replacingOccurrences(of: "Cursor", with: "Grok")
-                            .replacingOccurrences(of: "周期总额度 (主)", with: "Grok 周额度 (主)"),
+                            .replacingOccurrences(of: "周总额度", with: "Grok 周总额度")
+                            .replacingOccurrences(of: "周期总额度", with: "Grok 周总额度"),
                         remainingPercent: win.remainingPercent,
                         resetsAt: win.resetsAt,
                         resetText: win.resetText,
@@ -36,7 +47,7 @@ public struct GrokBotProvider: UsageProvider {
                     remainingPercent: liveRem,
                     accountEmail: email,
                     planTier: planLabel,
-                    primaryLabel: "Grok 周额度",
+                    primaryLabel: "Grok 周总额度",
                     resetsAt: liveCursor.resetsAt,
                     windows: grokWindows,
                     subtitle: liveCursor.subtitle,
@@ -46,7 +57,7 @@ public struct GrokBotProvider: UsageProvider {
             }
         }
 
-        // 2. Instant local Grok Bot sand-client-persistence reading (eliminates intermittent 100% jump on network hiccup!)
+        // 2. Instant local Grok Bot sand-client-persistence reading for Grok Bot's own active slot
         if let cache = localCache {
             return QuotaSnapshot(
                 agentID: .grokbot,
@@ -72,7 +83,7 @@ public struct GrokBotProvider: UsageProvider {
         return QuotaSnapshot(
             agentID: .grokbot,
             remainingPercent: nil,
-            accountEmail: cursorAuth.email,
+            accountEmail: isSameUnifiedAccount ? cursorAuth.email : nil,
             isWorking: isWorking,
             sourceDescription: "Grok Bot 未登录",
             requiresWebLogin: true,
@@ -81,6 +92,7 @@ public struct GrokBotProvider: UsageProvider {
     }
 
     struct SandCachedUsage: Sendable {
+        let activeSlot: String?
         let remainingPercent: Double
         let usedPercent: Double
         let resetsAt: Date?
@@ -96,44 +108,52 @@ public struct GrokBotProvider: UsageProvider {
         }
 
         var activeSlot: String? = nil
-        var usageDict: [String: Any]? = nil
+        var usageCandidates: [(slotKey: String, readAtMs: Double, usage: [String: Any])] = []
 
         for fn in files where fn.hasSuffix(".blob") {
-            let decodedKey = decodeBase32Filename(String(fn.dropLast(5)))
+            let rawDecoded = decodeBase32Filename(String(fn.dropLast(5)))
+            let decodedKey = rawDecoded.removingPercentEncoding ?? rawDecoded
+            let fullPath = (dirPath as NSString).appendingPathComponent(fn)
+
             if decodedKey == "sand.client.slice.client-meta.account-slot" {
-                let fullPath = (dirPath as NSString).appendingPathComponent(fn)
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath)),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let val = obj["value"] as? String {
-                    activeSlot = val
+                    activeSlot = val.removingPercentEncoding ?? val
                 }
             } else if decodedKey.hasSuffix(".weekly-usage.cache") {
-                let fullPath = (dirPath as NSString).appendingPathComponent(fn)
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath)),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let val = obj["value"] as? [String: Any],
                    let reading = val["reading"] as? [String: Any],
                    let usage = reading["usage"] as? [String: Any] {
-                    usageDict = usage
+                    let readAt = (reading["readAtMs"] as? NSNumber)?.doubleValue ?? 0
+                    usageCandidates.append((slotKey: decodedKey, readAtMs: readAt, usage: usage))
                 }
             }
         }
 
-        guard let usage = usageDict else { return nil }
+        // Match exact active account slot first; fall back to most recently read usage blob
+        let matchedUsage: [String: Any]? = {
+            if let slot = activeSlot, !slot.isEmpty {
+                if let exact = usageCandidates.first(where: { $0.slotKey.contains(slot) }) {
+                    return exact.usage
+                }
+            }
+            return usageCandidates.max(by: { $0.readAtMs < $1.readAtMs })?.usage
+        }()
+
+        guard let usage = matchedUsage else { return nil }
         let used: Double
-        if let d = usage["percentUsed"] as? Double {
-            used = d
-        } else if let i = usage["percentUsed"] as? Int {
-            used = Double(i)
+        if let n = usage["percentUsed"] as? NSNumber {
+            used = n.doubleValue
         } else {
             return nil
         }
 
         var resetsAt: Date? = nil
-        if let ms = usage["nextResetMs"] as? Double, ms > 1_000_000_000_000 {
+        if let ms = (usage["nextResetMs"] as? NSNumber)?.doubleValue, ms > 1_000_000_000_000 {
             resetsAt = Date(timeIntervalSince1970: ms / 1000.0)
-        } else if let msInt = usage["nextResetMs"] as? Int, msInt > 1_000_000_000_000 {
-            resetsAt = Date(timeIntervalSince1970: Double(msInt) / 1000.0)
         }
 
         let isTrial = (usage["isSandTrial"] as? Bool) ?? false
@@ -155,11 +175,13 @@ public struct GrokBotProvider: UsageProvider {
         var resolvedEmail: String? = nil
         if let slot = activeSlot, let cAuthId = cursorAuth.authId, slot == cAuthId {
             resolvedEmail = cursorAuth.email
-        } else if cursorAuth.signUpType?.lowercased() == "grok" {
+        } else if cursorAuth.signUpType?.lowercased() == "grok",
+                  (activeSlot == nil || activeSlot?.lowercased().hasPrefix("grok|") == true) {
             resolvedEmail = cursorAuth.email
         }
 
         return SandCachedUsage(
+            activeSlot: activeSlot,
             remainingPercent: max(0, min(100, 100.0 - used)),
             usedPercent: used,
             resetsAt: resetsAt,

@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.2.1-141413?style=flat-square" alt="Release v1.2.1" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.3.0-141413?style=flat-square" alt="Release v1.3.0" /></a>
     <img src="https://img.shields.io/badge/platform-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/engine-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/supported-30%2B%20AI%20Models%20%26%20Plans-478577?style=flat-square" alt="30+ AI Models & Plans" />
@@ -61,8 +61,10 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ---
 
-## What's New in v1.2.1 (See [CHANGELOG.md](./CHANGELOG.md))
+## What's New in v1.3.0 (See [CHANGELOG.md](./CHANGELOG.md))
 
+- **Ed25519 Signed Remote Push Auto-Updater (`v1.3.0`)**: Native in-app remote update notifications, one-click verified download (`CryptoKit` Ed25519 + SHA-256), atomic `/Applications/AgentGauge.app` overwrite & seamless restart without Gatekeeper prompts, plus automatic cleanup of older running instances.
+- **First-Principles Multi-Pool Quota Engine (`v1.3.0`)**: Separated Antigravity's independent `Gemini` and `Anthropic` quota pools with `<0.5ms` Desktop active-model tracking and 4-mode pool switching (`Auto`, `Min Bottleneck`, `Gemini`, `Anthropic`), fixed Anthropic `0..100` utilization scaling, enforced `min(5h, 7d weekly)` bottleneck dominance across `Claude` & `Codex`, upgraded `Dual-Track HUD` (`#09`), and added full cache invalidation on manual refresh.
 - **Zero-Flicker Schmitt-Trigger Dock Handoff (`v1.2.1`)**: Eliminated hover oscillation (`A ↔ B` / `On ↔ Off`) when parking the pointer on the boundary or empty gap between adjacent magnified Dock icons via a single-authority 60Hz `DockAXHitOutcome` state machine with `~17pt` bidirectional hysteresis and inter-icon seam hold.
 - **11 Curated Optical-Water Styles**: Pure-icon indicator suite (`Top Timer Scrim`, `Dynamic Split`, `Micro-Halo Text`, `Concentric R-Corner Dodge`, `Aperture Sweep`, `Pixel LED Matrix`, `Dual-Track HUD`, `Braun Arc Needle`, `5-Cell Prism Bar`, `Dynamic Micro-Island`, `Top Energy Brow`) unified onto the signature optical bubble-refraction Metal shader.
 - **Gravity-Stabilized 120Hz Physics & Rail Centering**: Critically damped wave equilibrium (`0` async jitter) and constant horizontal hover rail without vertical bounce.
@@ -75,10 +77,14 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ### Download Installer (`.dmg`)
 
-- **GitHub Releases (Primary)**: [**AgentGauge-v1.2.1-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.2.1-macOS.dmg) (`2.7 MB`, Apple Silicon / macOS 26+)
-- **Official Website Mirror (Fast Global / China CDN)**: [**usage.komorebi.date/downloads/AgentGauge-v1.2.1-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.2.1-macOS.dmg)
+- **GitHub Releases (Primary)**: [**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg) (`v1.3.0`, `2.7 MB`, Apple Silicon / macOS 26+)
+- **Official Website Mirror (Fast Global / China CDN)**: [**usage.komorebi.date/downloads/AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)
+- **One-Line Install / Overwrite Upgrade from Terminal**:
+  ```bash
+  curl -fsSL https://usage.komorebi.date/install.sh | bash
+  ```
 
-1. Open `AgentGauge-v1.2.1-macOS.dmg` and drag **AgentGauge** into `/Applications`.
+1. Open `AgentGauge-macOS.dmg` and drag **AgentGauge** into `/Applications` (or double-click `双击一键覆盖旧版.command` when upgrading from `v1.1–v1.2.1`; `v1.3.0+` supports one-click in-app OTA updates).
 2. Launch **AgentGauge** and grant **Accessibility** permission when macOS prompts once (used solely to detect which Dock icon sits under your cursor).
 3. *(Optional)* If macOS Gatekeeper displays an unverified developer prompt on first launch, run the following command in Terminal or click **Open Anyway** in **System Settings → Privacy & Security**:
    ```bash

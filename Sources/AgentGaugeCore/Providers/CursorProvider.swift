@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SQLite3
 
@@ -11,29 +12,110 @@ public struct CursorLocalAuth: Sendable {
     public let displayName: String?
 }
 
+private final class CursorSnapshotCache: @unchecked Sendable {
+    static let shared = CursorSnapshotCache()
+    private let lock = NSLock()
+    private var cached: QuotaSnapshot?
+    private var cachedAt: Date = .distantPast
+
+    func invalidate() {
+        lock.lock()
+        cached = nil
+        cachedAt = .distantPast
+        lock.unlock()
+    }
+
+    func get(isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let snap = cached else { return nil }
+        let now = Date()
+        if let r = snap.resetsAt, now >= r {
+            return nil
+        }
+        let maxAge: TimeInterval = (isAppRunning || isWorking) ? 60.0 : 180.0
+        guard now.timeIntervalSince(cachedAt) <= maxAge else {
+            return nil
+        }
+        return snap
+    }
+
+    func set(_ snap: QuotaSnapshot) {
+        lock.lock()
+        cached = snap
+        cachedAt = Date()
+        lock.unlock()
+    }
+}
+
+private actor CursorAPISingleFlight {
+    static let shared = CursorAPISingleFlight()
+    private var inFlight: Task<QuotaSnapshot?, Never>?
+
+    func run(operation: @Sendable @escaping () async -> QuotaSnapshot?) async -> QuotaSnapshot? {
+        if let existing = inFlight {
+            return await existing.value
+        }
+        let task = Task {
+            await operation()
+        }
+        inFlight = task
+        let res = await task.value
+        inFlight = nil
+        return res
+    }
+}
+
 public struct CursorProvider: UsageProvider {
     public let agentID: AgentID = .cursor
 
     public init() {}
 
+    public static func invalidateCache() {
+        CursorSnapshotCache.shared.invalidate()
+    }
+
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
+        let isAppRunning = await MainActor.run {
+            AgentID.cursor.bundleIdentifiers.contains { bid in
+                !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
+            }
+        }
+        if let recent = CursorSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking) {
+            return QuotaSnapshot(
+                agentID: .cursor,
+                remainingPercent: recent.remainingPercent,
+                accountEmail: recent.accountEmail,
+                planTier: recent.planTier,
+                primaryLabel: recent.primaryLabel,
+                resetsAt: recent.resetsAt,
+                resetText: recent.resetText,
+                windows: recent.windows,
+                subtitle: recent.subtitle,
+                isWorking: isWorking,
+                sourceDescription: recent.sourceDescription,
+                updatedAt: recent.updatedAt
+            )
+        }
+
         let localAuth = Self.readLocalAuthState()
 
-        // 1. Primary path: Direct Cursor Desktop API (zero WebView!)
+        // 1. Primary path: Direct Cursor Desktop API (zero WebView, deduplicated across Cursor + Grok Bot!)
         if let token = localAuth.accessToken {
-            if let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
-                return snapshot
-            }
-            // Attempt native refreshToken exchange if accessToken expired while Cursor.app was closed
-            if let rt = localAuth.refreshToken,
-               let refreshed = await Self.refreshCursorAccessToken(refreshToken: rt),
-               let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: refreshed, isWorking: isWorking) {
-                return snapshot
-            }
-            // Retry once after brief pause on transient network/SSL hiccup
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            if let snapshot = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
+            if let snapshot = await CursorAPISingleFlight.shared.run(operation: {
+                if let s = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
+                    return s
+                }
+                if let rt = localAuth.refreshToken,
+                   let refreshed = await Self.refreshCursorAccessToken(refreshToken: rt),
+                   let s = await fetchFromDesktopAPI(auth: localAuth, accessToken: refreshed, isWorking: isWorking) {
+                    return s
+                }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                return await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking)
+            }) {
+                CursorSnapshotCache.shared.set(snapshot)
                 return snapshot
             }
             // Unified Anysphere/xAI offline cross-fallback when account is Grok-linked
@@ -193,33 +275,46 @@ public struct CursorProvider: UsageProvider {
             return nil
         }
 
+        let planInfoDict = planRoot?["planInfo"] as? [String: Any]
+        let periodKind = ((planInfoDict?["includedUsagePeriod"] as? String) ?? "").uppercased()
+        let isWeeklyPeriod = periodKind.contains("WEEK")
+
         let totalUsed = Self.parseDouble(planUsage["totalPercentUsed"])
             ?? Self.parseDouble(planUsage["autoPercentUsed"])
         guard let usedPct = totalUsed else { return nil }
-        let remaining = max(0, min(100, 100.0 - usedPct))
+        let totalRem = max(0, min(100, 100.0 - usedPct))
 
+        // Prefer exact quota reset timestamp (`includedUsageResetsAt`) over monthly billing date (`billingCycleEnd`)
+        let resetRaw = Self.parseDouble(planInfoDict?["includedUsageResetsAt"])
+            ?? Self.parseDouble(json["billingCycleEnd"])
         var resetsAt: Date? = nil
-        if let endMs = Self.parseDouble(json["billingCycleEnd"]), endMs > 1_000_000_000_000 {
+        if let endMs = resetRaw, endMs > 1_000_000_000_000 {
             resetsAt = Date(timeIntervalSince1970: endMs / 1000.0)
-        } else if let endSec = Self.parseDouble(json["billingCycleEnd"]), endSec > 1_000_000_000 {
+        } else if let endSec = resetRaw, endSec > 1_000_000_000 {
             resetsAt = Date(timeIntervalSince1970: endSec)
         }
 
-        var windows: [QuotaWindow] = []
-        windows.append(QuotaWindow(
-            label: "周期总额度 (主)",
-            remainingPercent: remaining,
-            resetsAt: resetsAt,
-            isPrimary: true
-        ))
-        if let autoUsed = Self.parseDouble(planUsage["autoPercentUsed"]) {
+        let mainTitle = isWeeklyPeriod ? "周总额度" : "周期总额度"
+        var windows: [QuotaWindow] = [
+            QuotaWindow(
+                label: mainTitle,
+                remainingPercent: totalRem,
+                resetsAt: resetsAt,
+                isPrimary: true
+            )
+        ]
+
+        let autoUsedOpt = Self.parseDouble(planUsage["autoPercentUsed"])
+        let apiUsedOpt = Self.parseDouble(planUsage["apiPercentUsed"])
+        // Only emit separate Auto / API pool rows when Cursor actually splits pools (avoids duplicate identical bars!)
+        if let autoUsed = autoUsedOpt, (apiUsedOpt != nil || abs(autoUsed - usedPct) >= 0.25) {
             windows.append(QuotaWindow(
-                label: "Auto / 主力模型",
+                label: "Auto / 主力模型池",
                 remainingPercent: max(0, min(100, 100.0 - autoUsed)),
                 resetsAt: resetsAt
             ))
         }
-        if let apiUsed = Self.parseDouble(planUsage["apiPercentUsed"]) {
+        if let apiUsed = apiUsedOpt {
             windows.append(QuotaWindow(
                 label: "API / 独立模型池",
                 remainingPercent: max(0, min(100, 100.0 - apiUsed)),
@@ -227,10 +322,10 @@ public struct CursorProvider: UsageProvider {
             ))
         }
 
-        let planInfoDict = planRoot?["planInfo"] as? [String: Any]
         let apiPlanName = planInfoDict?["planName"] as? String
         let isMerged = (planRoot?["isMerged"] as? Bool) ?? (auth.signUpType?.lowercased() == "grok")
         let resolvedPlan = Self.formatCursorPlan(rawPlan: apiPlanName ?? auth.membershipType, isMergedGrok: isMerged)
+        let remaining = totalRem
 
         var subtitleParts: [String] = []
         if let msg = (json["displayMessage"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !msg.isEmpty {

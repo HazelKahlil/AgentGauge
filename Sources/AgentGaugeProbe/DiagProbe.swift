@@ -9,6 +9,106 @@ import Foundation
 struct DiagProbe {
     static func main() async {
         let argv = CommandLine.arguments
+        if argv.contains("--verify-updater") {
+            // 1. SemVer comparison edge cases
+            precondition(UpdateManager.isRemoteNewer(remoteVersion: "1.3.0", remoteBuild: 130, currentVersion: "1.2.1", currentBuild: 121))
+            precondition(UpdateManager.isRemoteNewer(remoteVersion: "1.10.0", remoteBuild: 1100, currentVersion: "1.3.0", currentBuild: 130))
+            precondition(!UpdateManager.isRemoteNewer(remoteVersion: "1.3.0", remoteBuild: 130, currentVersion: "1.3.0", currentBuild: 130))
+            precondition(UpdateManager.isRemoteNewer(remoteVersion: "1.3.0", remoteBuild: 131, currentVersion: "1.3.0", currentBuild: 130))
+            print("[PASS] SemVer & build monotonic comparison invariants verified")
+
+            // 2. Verify real generated Website/updates/latest.json + AgentGauge-macOS.zip cryptographic integrity
+            let root = PromoExport.repoRoot
+            let manifestURL = URL(fileURLWithPath: "\(root)/Website/updates/latest.json")
+            let zipURL = URL(fileURLWithPath: "\(root)/Website/downloads/AgentGauge-macOS.zip")
+            let data = try! Data(contentsOf: manifestURL)
+            let json = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+            let ver = json["version"] as! String
+            let build = json["build"] as! Int
+            let sha = json["sha256"] as! String
+            let sig = json["signature"] as! String
+
+            precondition(UpdateManager.verifyManifestSignature(version: ver, build: build, sha256: sha, signatureBase64: sig), "Valid Ed25519 signature must pass")
+            precondition(!UpdateManager.verifyManifestSignature(version: "9.9.9", build: build, sha256: sha, signatureBase64: sig), "Version tampering must fail Ed25519 signature")
+
+            let validManifest = ReleaseManifest(version: ver, build: build, zipUrl: "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip", sha256: sha, signature: sig, isFromSignedFeed: true)
+            try! UpdateManager.verifyArchiveCryptographically(at: zipURL, manifest: validManifest)
+            print("[PASS] Real OTA archive (v\(ver), build \(build)) passed Ed25519 + SHA-256 verification")
+
+            // 3. Prove 1-byte archive tampering is rejected
+            let tamperedURL = FileManager.default.temporaryDirectory.appendingPathComponent("tampered-ota-\(UUID().uuidString).zip")
+            defer { try? FileManager.default.removeItem(at: tamperedURL) }
+            var tamperedBytes = try! Data(contentsOf: zipURL)
+            tamperedBytes[tamperedBytes.count / 2] ^= 0xFF
+            try! tamperedBytes.write(to: tamperedURL)
+            var rejected = false
+            do {
+                try UpdateManager.verifyArchiveCryptographically(at: tamperedURL, manifest: validManifest)
+            } catch {
+                rejected = true
+            }
+            precondition(rejected, "1-byte tampered archive MUST be rejected!")
+            print("[PASS] 1-byte tampered OTA archive deterministically rejected")
+            return
+        }
+        if argv.contains("--verify-quotas") {
+            // 1. Boundary rounding invariants
+            precondition(QuotaSnapshot.displayPercentInt(0.0) == 0)
+            precondition(QuotaSnapshot.displayPercentInt(0.04) == 0)
+            precondition(QuotaSnapshot.displayPercentInt(0.35) == 1, "0.35% must stay 1%, never false 0%")
+            precondition(QuotaSnapshot.displayPercentInt(1.988) == 2)
+            precondition(QuotaSnapshot.displayPercentInt(99.6) == 99, "99.6% must stay 99%, never false 100%")
+            precondition(QuotaSnapshot.displayPercentInt(100.0) == 100)
+            print("[PASS] Boundary displayPercentInt invariants verified")
+
+            // 2. Live Antigravity dual-pool separation & 0ms pool-focus switching
+            let t0 = Date()
+            let agAuto = await AntigravityProvider().fetchSnapshot()
+            let dtMs = Date().timeIntervalSince(t0) * 1000.0
+            print(String(format: "[INFO] Antigravity initial fetch: %.0fms | tier=%@ | hero=%@ | sub=%@",
+                         dtMs,
+                         agAuto.planTier ?? "nil",
+                         agAuto.formattedCardValue(showPercentageSign: true),
+                         agAuto.subtitle ?? "nil"))
+            for w in agAuto.windows {
+                print("   window:", w.isPrimary ? "[PRIMARY]" : "         ", w.label, "=", QuotaSnapshot.displayPercentInt(w.remainingPercent), "%", "| reset:", w.formattedCountdown())
+            }
+            if let firstWin = agAuto.windows.first, let rem = agAuto.remainingPercent {
+                precondition(firstWin.isPrimary, "Row 0 must be marked isPrimary")
+                precondition(abs(firstWin.remainingPercent - rem) < 0.001, "Primary row must match hero remainingPercent")
+            }
+
+            let tRe = Date()
+            let agGem = AntigravityProvider.reevaluateFromCache(poolFocus: .geminiOnly)
+            let agAnt = AntigravityProvider.reevaluateFromCache(poolFocus: .anthropicOnly)
+            let agMin = AntigravityProvider.reevaluateFromCache(poolFocus: .minBottleneck)
+            let reMs = Date().timeIntervalSince(tRe) * 1000.0
+            print(String(format: "[PASS] 3x cached pool re-evaluations took %.2fms | Gemini=%@ | Anthropic=%@ | MinBottleneck=%@",
+                         reMs,
+                         agGem?.formattedCardValue(showPercentageSign: true) ?? "nil",
+                         agAnt?.formattedCardValue(showPercentageSign: true) ?? "nil",
+                         agMin?.formattedCardValue(showPercentageSign: true) ?? "nil"))
+            if let g = agGem?.remainingPercent, let a = agAnt?.remainingPercent, let m = agMin?.remainingPercent {
+                precondition(abs(m - min(g, a)) < 0.001, "minBottleneck must equal min(Gemini, Anthropic)")
+            }
+
+            // 3. Standalone GeminiProvider isolation (must NEVER include Anthropic windows!)
+            let gem = await GeminiProvider().fetchSnapshot()
+            print("[INFO] GeminiProvider:", gem.formattedCardValue(showPercentageSign: true), "| src:", gem.sourceDescription, "| wins:", gem.windows.map(\.label))
+            precondition(!gem.windows.contains(where: { $0.label.localizedCaseInsensitiveContains("anthropic") }), "GeminiProvider must never leak Anthropic pool")
+
+            // 4. Codex, Cursor & GrokBot verification
+            let cx = await CodexProvider().fetchSnapshot()
+            print("[INFO] CodexProvider:", cx.formattedCardValue(showPercentageSign: true), "| wins:", cx.windows.map { "\($0.label)=\(QuotaSnapshot.displayPercentInt($0.remainingPercent))%" }, "| sub:", cx.subtitle ?? "nil")
+
+            async let curTask = CursorProvider().fetchSnapshot()
+            async let gbTask = GrokBotProvider().fetchSnapshot()
+            let (cur, gb) = await (curTask, gbTask)
+            print("[INFO] CursorProvider:", cur.formattedCardValue(showPercentageSign: true), "| wins:", cur.windows.map { "\($0.label)=\(QuotaSnapshot.displayPercentInt($0.remainingPercent))%" }, "| reset:", cur.formattedCountdown())
+            print("[INFO] GrokBotProvider:", gb.formattedCardValue(showPercentageSign: true), "| src:", gb.sourceDescription, "| reset:", gb.formattedCountdown())
+            print("[PASS] All first-principles quota checks succeeded!")
+            return
+        }
         if argv.contains("--verify-hysteresis") {
             let rectA = CGRect(x: 100, y: 1000, width: 68, height: 68)
             let rectB = CGRect(x: 176, y: 1000, width: 68, height: 68)

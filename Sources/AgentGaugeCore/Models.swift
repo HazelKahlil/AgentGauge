@@ -487,12 +487,28 @@ public struct QuotaSnapshot: Sendable, Equatable {
         creditsRemaining != nil || balanceDisplay != nil
     }
 
-    /// True when quota/credits/balance/tier/error meaningfully changed (prevents repetitive 120s log spam).
+    /// Boundary-honest integer percentage:
+    /// - `<= 0.05%` -> `0` (truly exhausted / rate-limited)
+    /// - `(0.05%, 1.0%)` -> `1` (sliver of quota remains; never falsely reports hard `0%`)
+    /// - `(99.0%, 99.95%)` -> `99` (already consumed tokens; never falsely reports untouched `100%`)
+    public static func displayPercentInt(_ pct: Double) -> Int {
+        let clamped = max(0, min(100, pct))
+        if clamped <= 0.05 { return 0 }
+        if clamped < 1.0 { return 1 }
+        if clamped > 99.0 && clamped < 99.95 { return 99 }
+        return Int(round(clamped))
+    }
+
+    /// True when quota/credits/balance/tier/pool/windows/error meaningfully changed (prevents repetitive 120s log spam).
     public func hasMeaningfulChange(from previous: QuotaSnapshot?) -> Bool {
         guard let prev = previous else { return true }
-        let curPct = remainingPercent.map { Int(round($0)) }
-        let prevPct = prev.remainingPercent.map { Int(round($0)) }
+        let curPct = remainingPercent.map(Self.displayPercentInt)
+        let prevPct = prev.remainingPercent.map(Self.displayPercentInt)
+        let curWins = windows.map { "\($0.label):\(Self.displayPercentInt($0.remainingPercent))" }
+        let prevWins = prev.windows.map { "\($0.label):\(Self.displayPercentInt($0.remainingPercent))" }
         return curPct != prevPct
+            || curWins != prevWins
+            || primaryLabel != prev.primaryLabel
             || creditsRemaining != prev.creditsRemaining
             || balanceDisplay != prev.balanceDisplay
             || planTier != prev.planTier
@@ -511,6 +527,8 @@ public struct QuotaSnapshot: Sendable, Equatable {
         if lower.contains("chatgpt plus")    { return "Plus" }
         if lower.contains("chatgpt team")    { return "Team" }
         if lower.contains("chatgpt go")      { return "Go" }
+        if lower == "claude max"             { return "Max" }
+        if lower == "claude pro"             { return "Pro" }
         if lower.contains("copilot pro+")    { return "Pro+" }
         if lower.contains("copilot pro")     { return "Copilot Pro" }
         if lower.contains("copilot free")    { return "Free" }
@@ -550,7 +568,7 @@ public struct QuotaSnapshot: Sendable, Equatable {
             return "\(credits) 积分"
         }
         guard let rem = remainingPercent else { return "—" }
-        return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
+        return "\(Self.displayPercentInt(rem))\(showPercentageSign ? "%" : "")"
     }
 
     /// Compact formatted value for the 144x144 Dock Icon (never appends % for Credits or Currency Balance!).
@@ -573,7 +591,7 @@ public struct QuotaSnapshot: Sendable, Equatable {
             return "\(credits)"
         }
         guard let rem = remainingPercent else { return "" }
-        return "\(Int(round(rem)))\(showPercentageSign ? "%" : "")"
+        return "\(Self.displayPercentInt(rem))\(showPercentageSign ? "%" : "")"
     }
 
     /// Formatted summary for Hover Tooltip & Menu Bar (e.g. "余额 ¥11.28", "剩 500/500 积分", or "剩 85%").
@@ -588,7 +606,7 @@ public struct QuotaSnapshot: Sendable, Equatable {
             return "剩 \(credits) 积分"
         }
         guard let rem = remainingPercent else { return "—" }
-        return "剩 \(Int(round(rem)))\(showPercentageSign ? "%" : "")"
+        return "剩 \(Self.displayPercentInt(rem))\(showPercentageSign ? "%" : "")"
     }
 
     public func formattedCountdown(now: Date = Date()) -> String {
@@ -644,6 +662,39 @@ public enum TooltipDetailMode: String, CaseIterable, Codable, Sendable, Identifi
         case .multiModel: return "多模型 / 多窗口明细"
         case .primaryOnly: return "仅显示主/周额度"
         case .off: return "关闭上方悬停详情"
+        }
+    }
+}
+
+/// Controls which isolated quota pool drives Antigravity's primary Dock water level & hero percentage.
+/// Antigravity enforces separate 5h + Weekly pools for Google Gemini models vs Anthropic (Claude) / 3P models.
+public enum AntigravityPoolFocus: String, CaseIterable, Codable, Sendable, Identifiable {
+    case autoActiveModel = "autoActiveModel"
+    case minBottleneck = "minBottleneck"
+    case geminiOnly = "geminiOnly"
+    case anthropicOnly = "anthropicOnly"
+
+    public var id: String { rawValue }
+
+    public var shortTitle: String {
+        switch self {
+        case .autoActiveModel: return "跟随模型"
+        case .minBottleneck:   return "双池最低"
+        case .geminiOnly:      return "Gemini"
+        case .anthropicOnly:   return "Anthropic"
+        }
+    }
+
+    public var helpDescription: String {
+        switch self {
+        case .autoActiveModel:
+            return "自动识别 Antigravity 最近一次对话所用的模型池（Gemini 或 Anthropic Claude），切换模型即刻同步水位"
+        case .minBottleneck:
+            return "始终显示 Gemini 池与 Anthropic 池中余量最低的木桶瓶颈，任一池见底立即预警"
+        case .geminiOnly:
+            return "固定在 Dock 图标主读数展示 Gemini 模型池余量"
+        case .anthropicOnly:
+            return "固定在 Dock 图标主读数展示 Anthropic (Claude) 模型池余量"
         }
     }
 }

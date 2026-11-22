@@ -59,6 +59,8 @@ public final class OverlayManager {
     private let calibratedSpeedFactor: CGFloat = 1.12
     private let calibratedTiltScale: CGFloat = 0.58
 
+    public var onWakeNearDock: (() -> Void)?
+
     public init() {
         for id in AgentID.allCases {
             motionStates[id] = IconMotionState()
@@ -140,6 +142,7 @@ public final class OverlayManager {
         guard isMasterEnabled, renderTimer == nil else { return }
         let orientation = locator.currentOrientation()
         if isCursorNearAnyDockEdge(orientation: orientation, threshold: 215) {
+            onWakeNearDock?()
             lastFrameDate = Date()
             tick()
             renderTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in

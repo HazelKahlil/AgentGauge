@@ -1287,7 +1287,42 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.2.1", id: "v1-2-1", date: "2026-11-22", latest: true,
+      ver: "v1.3.0", id: "v1-3-0", date: "2026-11-22", latest: true,
+      title: [
+        "Ed25519 signed remote push auto-updater & Gemini vs Anthropic dual-pool engine",
+        "Ed25519 签名远程推送热更新系统与第一性原理双算力池引擎",
+      ],
+      summary: [
+        "Introduces native one-click remote push OTA updates (Ed25519 + SHA-256 verified, atomic overwrite & restart without Gatekeeper prompts), separates Antigravity's Gemini and Anthropic quota pools, and enforces min(5h, 7d weekly) bottleneck dominance.",
+        "新增菜单栏与设置页一键远程推送热更新（Ed25519 签名 + SHA-256 校验、原子覆盖并自动重启、自动清理旧版驻留进程），分离 Antigravity 内 Gemini 与 Anthropic 双算力池，并统一执行多窗口木桶串联定律。",
+      ],
+      groups: [
+        ["added", [
+          [
+            "<b>Cryptographically Signed Remote Push Auto-Updater (<code>UpdateManager</code>)</b>: Menu bar indicator dot, one-click popover banner, and Settings inspector backed by <code>CryptoKit</code> Ed25519 signatures + SHA-256 verification over <code>usage.komorebi.date/updates/latest.json</code> (with GitHub Releases fallback), atomic <code>/Applications/AgentGauge.app</code> replacement, automatic cleanup of older <code>v1.1–v1.2.1</code> memory processes, and <code>curl -fsSL https://usage.komorebi.date/install.sh | bash</code>.",
+            "<b>Ed25519 数字签名远程推送热更新系统（<code>UpdateManager</code>）</b>：支持菜单栏角标、弹窗横幅与设置顶部一键静默下载、原子覆盖 <code>/Applications/AgentGauge.app</code> 并自动重启（免重复触发 Gatekeeper 弹窗），自动接管清理旧版后台进程，并提供终端一行覆盖升级脚本。",
+          ],
+        ]],
+        ["fixed", [
+          [
+            "<b>Antigravity <code>Gemini</code> vs <code>Anthropic</code> Dual-Pool Isolation</b>: <code>AntigravityProvider</code> now separates <code>gemini-5h</code> / <code>gemini-weekly</code> from <code>3p-5h</code> / <code>3p-weekly</code>, detects the active Desktop conversation model in <code>&lt;0.5ms</code> on Dock hover / Menu Bar wake, labels untouched rolling <code>5h</code> windows as unconsumed, and provides a 4-mode pool selector (<code>Auto</code>, <code>Min Bottleneck</code>, <code>Gemini</code>, <code>Anthropic</code>).",
+            "<b>Antigravity 内 <code>Gemini</code> 与 <code>Anthropic</code> 双独立算力池隔离</b>：彻底解决依赖 CLI 默认模型而掩盖 Anthropic 池见底的问题；现支持在靠近 Dock 或打开菜单栏时以 <code>&lt;0.5ms</code> 识别桌面端当前模型池，未消耗的 5h 滚动窗如实标为 <code>未消耗</code>，并提供四档主读数池一键切换。",
+          ],
+          [
+            "<b>Anthropic <code>0..100</code> Utilization Scaling &amp; Series-Gate Bottleneck Law</b>: Fixed <code>ClaudeProvider</code> misreading <code>0.5%–1.0%</code> used as <code>50%–100%</code> used, and enforced <code>min(5h, 7d weekly)</code> across <code>Claude</code> and <code>Codex</code> so an exhausted weekly cap is never masked as <code>100%</code> after a 5-hour session reset.",
+            "<b>修复 Claude 低消耗比例跳变与多窗口木桶串联定律</b>：修复 <code>ClaudeProvider</code> 在 <code>&le;1.0%</code> 用量区间的 100 倍缩放错误，并在 <code>Claude</code> 与 <code>Codex</code> 中统一取 <code>min(5h 会话窗口, 7d 周总额度)</code> 作为真实瓶颈余量。",
+          ],
+        ]],
+        ["improved", [
+          [
+            "<b><code>Dual-Track HUD</code> (#09), Account Isolation &amp; True Manual Refresh</b>: Upgraded <code>Dual-Track HUD</code> to render <code>Gemini + Anthropic</code> pools (or <code>5h + Weekly</code>) with low-quota alert colors, added strict account-slot matching &amp; single-flight deduplication between <code>Cursor</code> and <code>Grok Bot</code>, restored the progress bar in <code>.primaryOnly</code> tooltip mode, and made Manual Refresh invalidate all in-memory caches immediately.",
+            "<b>升级双轨微仪表、账号槽位隔离与手动刷新穿透</b>：<code>双轨微仪表</code> 现独立渲染双池或 <code>5h + 周限</code> 双轨并支持低水位变红预警；<code>Cursor</code> 与 <code>Grok Bot</code> 增加严格账号槽位校验与并发合并；补齐「仅主额度」悬停进度条，且手动点击刷新立即穿透全部缓存。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.2.1", id: "v1-2-1", date: "2026-11-22",
       title: [
         "Zero-flicker Schmitt-trigger Dock seam handoff & official Changelog",
         "Dock 图标缝隙零闪烁施密特触发器、多样式混搭片头与官方更新日志",

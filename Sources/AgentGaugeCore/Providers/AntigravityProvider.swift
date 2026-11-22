@@ -1,16 +1,54 @@
 import AppKit
 import Darwin
 import Foundation
+import SQLite3
+
+public enum AntigravityModelPool: String, Sendable {
+    case gemini
+    case anthropic
+    case other
+
+    public var displayTitle: String {
+        switch self {
+        case .gemini:    return "Gemini"
+        case .anthropic: return "Anthropic"
+        case .other:     return "其他模型"
+        }
+    }
+}
+
+struct ParsedAGYBucket: Sendable {
+    let key: String
+    let pool: AntigravityModelPool
+    let isWeekly: Bool
+    let is5h: Bool
+    let label: String
+    let percent: Double
+    let resetsAt: Date?
+    let resetText: String?
+}
+
+struct CachedAGYPayload: Sendable {
+    let email: String?
+    let planTier: String?
+    let cliFallbackPool: AntigravityModelPool
+    let buckets: [ParsedAGYBucket]
+    let fetchedAt: Date
+}
 
 private final class AntigravityEndpointCache: @unchecked Sendable {
     static let shared = AntigravityEndpointCache()
 
     private let lock = NSLock()
-    private var cachedPort: Int?
-    private var cachedToken: String?
-    private var cachedCLISnapshot: QuotaSnapshot?
-    private var cachedCLIDate: Date = .distantPast
+    private var cachedPayload: CachedAGYPayload?
     private var cachedBannerPlanTier: String?
+    private var lastBannerProbeAtByEmail: [String: Date] = [:]
+
+    func invalidate() {
+        lock.lock()
+        cachedPayload = nil
+        lock.unlock()
+    }
 
     func getBannerPlanTier(for email: String?) -> String? {
         lock.lock()
@@ -32,62 +70,74 @@ private final class AntigravityEndpointCache: @unchecked Sendable {
     func setBannerPlanTier(_ tier: String, for email: String?) {
         lock.lock()
         cachedBannerPlanTier = tier
+        if let em = email?.lowercased(), !em.isEmpty {
+            lastBannerProbeAtByEmail[em] = Date()
+        }
         lock.unlock()
         if let em = email?.lowercased(), !em.isEmpty {
             UserDefaults.standard.set(tier, forKey: "AgentGauge.agyPlanTier.\(em)")
             UserDefaults.standard.set(Date(), forKey: "AgentGauge.agyPlanTierAt.\(em)")
         }
     }
-    func getRPC() -> (port: Int, token: String)? {
+
+    func shouldProbeBannerTier(for email: String?) -> Bool {
+        if getBannerPlanTier(for: email) != nil {
+            return false
+        }
         lock.lock()
         defer { lock.unlock() }
-        guard let p = cachedPort, let t = cachedToken else { return nil }
-        return (p, t)
+        let key = (email?.lowercased().nilIfEmpty) ?? "_default"
+        if let last = lastBannerProbeAtByEmail[key], Date().timeIntervalSince(last) < 3_600 {
+            return false
+        }
+        lastBannerProbeAtByEmail[key] = Date()
+        return true
     }
 
-    func setRPC(port: Int, token: String) {
-        lock.lock()
-        cachedPort = port
-        cachedToken = token
-        lock.unlock()
-    }
-
-    func clearRPC() {
-        lock.lock()
-        cachedPort = nil
-        cachedToken = nil
-        lock.unlock()
-    }
-
-    func getCLISnapshot(isAppRunning: Bool) -> QuotaSnapshot? {
+    func getPayload(isAppRunning: Bool, isWorking: Bool) -> CachedAGYPayload? {
         lock.lock()
         defer { lock.unlock() }
-        guard let snap = cachedCLISnapshot else { return nil }
-        // If reset timer has passed, force fresh sync to catch reset back to 100%!
-        if let reset = snap.resetsAt, Date() >= reset {
+        guard let payload = cachedPayload else { return nil }
+
+        let now = Date()
+        // Force fresh sync as soon as any real reset clock crosses zero!
+        for b in payload.buckets {
+            if let r = b.resetsAt, now >= r {
+                return nil
+            }
+        }
+
+        let maxAge: TimeInterval = if isWorking {
+            90.0
+        } else if isAppRunning {
+            175.0
+        } else {
+            900.0
+        }
+        guard now.timeIntervalSince(payload.fetchedAt) <= maxAge else {
             return nil
         }
-        // Adaptive cadence: 175s when Antigravity.app is open, 900s (15 min) when closed to save background PTY spawns!
-        let maxAge: TimeInterval = isAppRunning ? 175.0 : 900.0
-        guard Date().timeIntervalSince(cachedCLIDate) <= maxAge else {
-            return nil
-        }
-        return snap
+        return payload
     }
 
-    func setCLISnapshot(_ snapshot: QuotaSnapshot) {
+    func peekUnexpiredPayload() -> CachedAGYPayload? {
         lock.lock()
-        cachedCLISnapshot = snapshot
-        cachedCLIDate = Date()
+        defer { lock.unlock() }
+        return cachedPayload
+    }
+
+    func setPayload(_ payload: CachedAGYPayload) {
+        lock.lock()
+        cachedPayload = payload
         lock.unlock()
     }
 }
 
 private actor AntigravityCLISingleFlight {
     static let shared = AntigravityCLISingleFlight()
-    private var inFlight: Task<QuotaSnapshot?, Never>?
+    private var inFlight: Task<CachedAGYPayload?, Never>?
 
-    func fetch(operation: @Sendable @escaping () -> QuotaSnapshot?) async -> QuotaSnapshot? {
+    func fetch(operation: @Sendable @escaping () -> CachedAGYPayload?) async -> CachedAGYPayload? {
         if let existing = inFlight {
             return await existing.value
         }
@@ -106,76 +156,97 @@ public struct AntigravityProvider: UsageProvider {
 
     public init() {}
 
+    public static func invalidateCache() {
+        AntigravityEndpointCache.shared.invalidate()
+    }
+
+    public static func currentSavedPoolFocus() -> AntigravityPoolFocus {
+        if let raw = UserDefaults.standard.string(forKey: "AgentGauge.antigravityPoolFocus"),
+           let mode = AntigravityPoolFocus(rawValue: raw) {
+            return mode
+        }
+        return .autoActiveModel
+    }
+
+    /// Re-evaluates cached Antigravity dual-pool buckets in <0.5ms without spawning `agy` CLI.
+    /// Used when user switches models in Antigravity Desktop or toggles `AntigravityPoolFocus` in Settings.
+    public static func reevaluateFromCache(poolFocus: AntigravityPoolFocus? = nil) -> QuotaSnapshot? {
+        guard let payload = AntigravityEndpointCache.shared.peekUnexpiredPayload() else { return nil }
+        let focus = poolFocus ?? currentSavedPoolFocus()
+        let isWorking = checkIsWorking()
+        let desktopPool = (focus == .autoActiveModel) ? detectActiveDesktopPool() : nil
+        return buildSnapshot(from: payload, poolFocus: focus, detectedDesktopPool: desktopPool, isWorking: isWorking)
+    }
+
+    /// Dedicated Gemini-only pool reader for standalone `GeminiProvider` fallback (never mixes in Anthropic 3P pool!).
+    public static func fetchGeminiPoolOnly(isGeminiAppRunning: Bool) async -> QuotaSnapshot? {
+        let isAGYRunning = await MainActor.run {
+            !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.antigravity").isEmpty
+        }
+        let isAGYWorking = checkIsWorking()
+
+        var payload = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAGYRunning, isWorking: isAGYWorking)
+        if payload == nil {
+            payload = await AntigravityCLISingleFlight.shared.fetch {
+                Self.fetchViaDocumentedAGYStatusLine()
+            }
+            if let fresh = payload {
+                AntigravityEndpointCache.shared.setPayload(fresh)
+            }
+        }
+        guard let payload else { return nil }
+
+        let geminiBuckets = payload.buckets.filter { $0.pool == .gemini }
+        guard !geminiBuckets.isEmpty else { return nil }
+
+        let limiting = geminiBuckets.min(by: { $0.percent < $1.percent }) ?? geminiBuckets[0]
+        let ordered = [limiting] + geminiBuckets.filter { $0.key != limiting.key }
+        let windows = ordered.enumerated().map { idx, b in
+            QuotaWindow(
+                label: b.label,
+                remainingPercent: b.percent,
+                resetsAt: b.resetsAt,
+                resetText: b.resetText,
+                isPrimary: idx == 0
+            )
+        }
+
+        return QuotaSnapshot(
+            agentID: .gemini,
+            remainingPercent: limiting.percent,
+            accountEmail: payload.email,
+            planTier: payload.planTier,
+            primaryLabel: limiting.label,
+            resetsAt: limiting.resetsAt,
+            resetText: limiting.resetText,
+            windows: windows,
+            isWorking: isGeminiAppRunning,
+            sourceDescription: "Google AI 订阅池 (Gemini)",
+            updatedAt: payload.fetchedAt
+        )
+    }
+
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
-
-        // 1. Legacy Antigravity IDE 1.x fast path (only when explicit --override_ide_name antigravity & --csrf_token exist)
-        if let cached = AntigravityEndpointCache.shared.getRPC() {
-            if let snapshot = await Self.queryLegacyCombinedQuota(port: cached.port, csrfToken: cached.token, isWorking: isWorking) {
-                return snapshot
-            }
-            AntigravityEndpointCache.shared.clearRPC()
-        }
-
-        let legacyServer = await Task.detached(priority: .utility) {
-            Self.discoverLegacyLanguageServer()
-        }.value
-
-        if let server = legacyServer {
-            for port in server.ports {
-                if let snapshot = await Self.queryLegacyCombinedQuota(port: port, csrfToken: server.csrfToken, isWorking: isWorking) {
-                    AntigravityEndpointCache.shared.setRPC(port: port, token: server.csrfToken)
-                    return snapshot
-                }
-            }
-        }
-
         let isAppRunning = await MainActor.run {
             !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.antigravity").isEmpty
         }
+        let focus = Self.currentSavedPoolFocus()
+        let desktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
 
-        // 2. Antigravity 2.0 & CLI official documented path (`agy --settings` statusLine JSON payload)
-        if let recent = AntigravityEndpointCache.shared.getCLISnapshot(isAppRunning: isAppRunning) {
-            return QuotaSnapshot(
-                agentID: .antigravity,
-                remainingPercent: recent.remainingPercent,
-                creditsRemaining: recent.creditsRemaining,
-                creditsTotal: recent.creditsTotal,
-                balanceDisplay: recent.balanceDisplay,
-                dockBalanceShort: recent.dockBalanceShort,
-                accountEmail: recent.accountEmail,
-                planTier: recent.planTier,
-                primaryLabel: recent.primaryLabel,
-                resetsAt: recent.resetsAt,
-                resetText: recent.resetText,
-                windows: recent.windows,
-                subtitle: recent.subtitle,
-                isWorking: isWorking,
-                sourceDescription: recent.sourceDescription,
-                updatedAt: recent.updatedAt
-            )
+        if let recent = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAppRunning, isWorking: isWorking),
+           let snap = Self.buildSnapshot(from: recent, poolFocus: focus, detectedDesktopPool: desktopPool, isWorking: isWorking) {
+            return snap
         }
 
-        if let cliSnapshot = await AntigravityCLISingleFlight.shared.fetch(operation: {
-            Self.fetchViaDocumentedAGYStatusLine(isWorking: isWorking)
+        if let freshPayload = await AntigravityCLISingleFlight.shared.fetch(operation: {
+            Self.fetchViaDocumentedAGYStatusLine()
         }) {
-            AntigravityEndpointCache.shared.setCLISnapshot(cliSnapshot)
-            return QuotaSnapshot(
-                agentID: .antigravity,
-                remainingPercent: cliSnapshot.remainingPercent,
-                creditsRemaining: cliSnapshot.creditsRemaining,
-                creditsTotal: cliSnapshot.creditsTotal,
-                accountEmail: cliSnapshot.accountEmail,
-                planTier: cliSnapshot.planTier,
-                primaryLabel: cliSnapshot.primaryLabel,
-                resetsAt: cliSnapshot.resetsAt,
-                resetText: cliSnapshot.resetText,
-                windows: cliSnapshot.windows,
-                subtitle: cliSnapshot.subtitle,
-                isWorking: isWorking,
-                sourceDescription: cliSnapshot.sourceDescription,
-                updatedAt: cliSnapshot.updatedAt
-            )
+            AntigravityEndpointCache.shared.setPayload(freshPayload)
+            let refreshedDesktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
+            if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
+                return snap
+            }
         }
 
         return QuotaSnapshot(
@@ -208,7 +279,7 @@ public struct AntigravityProvider: UsageProvider {
         return nil
     }
 
-    private static func fetchViaDocumentedAGYStatusLine(isWorking: Bool) -> QuotaSnapshot? {
+    private static func fetchViaDocumentedAGYStatusLine() -> CachedAGYPayload? {
         guard let agyPath = resolveAGYBinaryPath() else { return nil }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -284,9 +355,10 @@ public struct AntigravityProvider: UsageProvider {
         var quotaDetectedAt: Date?
         var parsedEmail: String?
         var detectedBannerTier: String?
-        var tierProbeStage = 0 // 0 = waiting for prompt+quota, 1 = sent /credits, 2 = sent ESC
+        var allowSlowBannerProbe = false
+        var tierProbeStage = 0
         var stageTimestamp = Date()
-        let deadline = launchDate.addingTimeInterval(8.5)
+        let deadline = launchDate.addingTimeInterval(7.5)
 
         while Date() < deadline {
             drainStdout()
@@ -301,8 +373,10 @@ public struct AntigravityProvider: UsageProvider {
                 if let jsonTier = (json["plan_tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !jsonTier.isEmpty {
                     detectedBannerTier = normalizeGooglePlanTier(jsonTier)
+                } else if let cachedTier = AntigravityEndpointCache.shared.getBannerPlanTier(for: parsedEmail) {
+                    detectedBannerTier = cachedTier
                 } else {
-                    detectedBannerTier = AntigravityEndpointCache.shared.getBannerPlanTier(for: parsedEmail)
+                    allowSlowBannerProbe = AntigravityEndpointCache.shared.shouldProbeBannerTier(for: parsedEmail)
                 }
             }
 
@@ -311,15 +385,16 @@ public struct AntigravityProvider: UsageProvider {
             }
 
             if parsedRoot != nil {
-                if detectedBannerTier != nil {
+                // Fast exit (~0.75s) when tier is already known or recently probed!
+                if detectedBannerTier != nil || !allowSlowBannerProbe {
                     break
                 }
                 let cleaned = cleanANSIText(bannerBytes)
                 let headerMounted: Bool = {
                     if let em = parsedEmail, !em.isEmpty, cleaned.contains(em) {
-                        return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 0.45
+                        return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 0.35
                     }
-                    return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 1.10
+                    return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 0.90
                 }()
 
                 if tierProbeStage == 0 && headerMounted {
@@ -327,13 +402,13 @@ public struct AntigravityProvider: UsageProvider {
                     tierProbeStage = 1
                     stageTimestamp = Date()
                 } else if tierProbeStage == 1 {
-                    if cleaned.contains("Antigravity CLI credits") || Date().timeIntervalSince(stageTimestamp) >= 1.15 {
-                        Thread.sleep(forTimeInterval: 0.10)
+                    if cleaned.contains("Antigravity CLI credits") || Date().timeIntervalSince(stageTimestamp) >= 0.95 {
+                        Thread.sleep(forTimeInterval: 0.08)
                         writeStdin("\u{1B}")
                         tierProbeStage = 2
                         stageTimestamp = Date()
                     }
-                } else if tierProbeStage == 2 && Date().timeIntervalSince(stageTimestamp) >= 0.95 {
+                } else if tierProbeStage == 2 && Date().timeIntervalSince(stageTimestamp) >= 0.65 {
                     break
                 }
             }
@@ -341,7 +416,7 @@ public struct AntigravityProvider: UsageProvider {
             if !proc.isRunning {
                 break
             }
-            Thread.sleep(forTimeInterval: 0.06)
+            Thread.sleep(forTimeInterval: 0.05)
         }
 
         drainStdout()
@@ -355,7 +430,7 @@ public struct AntigravityProvider: UsageProvider {
         // Documented graceful exit (`ESC` + `Ctrl+D Ctrl+D`), then deterministically reap child PTY & script process
         writeStdin("\u{1B}\u{04}\u{04}")
         try? inPipe.fileHandleForWriting.close()
-        Thread.sleep(forTimeInterval: 0.08)
+        Thread.sleep(forTimeInterval: 0.06)
 
         let scriptPID = proc.processIdentifier
         SubprocessReaper.terminateAndReap(proc, killChildrenOfScriptPID: scriptPID)
@@ -368,8 +443,326 @@ public struct AntigravityProvider: UsageProvider {
         }
 
         guard let root = parsedRoot else { return nil }
-        return parseStatusLinePayload(root, bannerPlanTier: detectedBannerTier, isWorking: isWorking)
+        return parseStatusLinePayload(root, bannerPlanTier: detectedBannerTier)
     }
+
+    // MARK: - Dual-Pool Parsing & Snapshot Construction (`Gemini` vs `Anthropic`)
+
+    private static func parseStatusLinePayload(_ root: [String: Any], bannerPlanTier: String?) -> CachedAGYPayload? {
+        guard let quotaDict = root["quota"] as? [String: Any], !quotaDict.isEmpty else {
+            return nil
+        }
+
+        let email = (root["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let rawTier = ((root["plan_tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty)
+            ?? bannerPlanTier
+            ?? AntigravityEndpointCache.shared.getBannerPlanTier(for: email)
+        let resolvedTier = rawTier.map(normalizeGooglePlanTier)
+
+        let modelDict = root["model"] as? [String: Any]
+        let cliModelStr = ((modelDict?["display_name"] as? String) ?? (modelDict?["id"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let cliFallbackPool = classifyModelString(cliModelStr) ?? .gemini
+
+        let now = Date()
+        var buckets: [ParsedAGYBucket] = []
+
+        for (key, val) in quotaDict {
+            guard let info = val as? [String: Any] else { continue }
+            if (info["disabled"] as? Bool) == true { continue }
+
+            let rawResetDate: Date? = {
+                if let d = parseISODate(info["reset_time"] as? String) {
+                    return d
+                }
+                if let secs = (info["reset_in_seconds"] as? NSNumber)?.doubleValue, secs > 0 {
+                    return now.addingTimeInterval(secs)
+                }
+                return nil
+            }()
+
+            let fraction: Double
+            if let f = (info["remaining_fraction"] as? NSNumber)?.doubleValue {
+                fraction = f
+            } else if rawResetDate != nil {
+                fraction = 0.0
+            } else {
+                continue
+            }
+
+            let kLower = key.lowercased()
+            let pool: AntigravityModelPool = if kLower.contains("gemini") {
+                .gemini
+            } else if kLower.contains("3p") || kLower.contains("claude") || kLower.contains("anthropic") || kLower.contains("gpt") {
+                .anthropic
+            } else {
+                .other
+            }
+
+            let isWeekly = kLower.contains("week") || (rawResetDate.map { $0.timeIntervalSince(now) > 26 * 3600 } ?? false)
+            let is5h = !isWeekly && (kLower.contains("5h") || kLower.contains("hour") || kLower.contains("session"))
+
+            let groupName: String = switch pool {
+            case .gemini:    "Gemini"
+            case .anthropic: "Anthropic"
+            case .other:     key
+            }
+
+            let windowKind: String = if isWeekly {
+                "周限额"
+            } else if is5h {
+                "5h 限额"
+            } else {
+                "限额"
+            }
+
+            // Rolling 5h window honesty: when 100% untouched, `agy` returns `now + 5h` rolling horizon (17999s).
+            // Never mislead the user with a perpetual "4h 59m" timer when nothing has been consumed!
+            let effectiveResetDate: Date?
+            let effectiveResetText: String?
+            if is5h && fraction >= 0.9995 {
+                effectiveResetDate = nil
+                effectiveResetText = "未消耗"
+            } else {
+                effectiveResetDate = rawResetDate
+                effectiveResetText = nil
+            }
+
+            buckets.append(ParsedAGYBucket(
+                key: key,
+                pool: pool,
+                isWeekly: isWeekly,
+                is5h: is5h,
+                label: "\(groupName) · \(windowKind)",
+                percent: max(0, min(100, fraction * 100.0)),
+                resetsAt: effectiveResetDate,
+                resetText: effectiveResetText
+            ))
+        }
+
+        guard !buckets.isEmpty else { return nil }
+        return CachedAGYPayload(
+            email: email,
+            planTier: resolvedTier,
+            cliFallbackPool: cliFallbackPool,
+            buckets: buckets,
+            fetchedAt: now
+        )
+    }
+
+    static func buildSnapshot(
+        from payload: CachedAGYPayload,
+        poolFocus: AntigravityPoolFocus,
+        detectedDesktopPool: AntigravityModelPool?,
+        isWorking: Bool
+    ) -> QuotaSnapshot? {
+        let buckets = payload.buckets
+        guard !buckets.isEmpty else { return nil }
+
+        let geminiBuckets = buckets.filter { $0.pool == .gemini }
+        let anthropicBuckets = buckets.filter { $0.pool == .anthropic }
+        let otherBuckets = buckets.filter { $0.pool == .other }
+
+        let geminiLimiting = geminiBuckets.min(by: {
+            ($0.percent, $0.isWeekly ? 0 : 1) < ($1.percent, $1.isWeekly ? 0 : 1)
+        })
+        let anthropicLimiting = anthropicBuckets.min(by: {
+            ($0.percent, $0.isWeekly ? 0 : 1) < ($1.percent, $1.isWeekly ? 0 : 1)
+        })
+
+        let activePool: AntigravityModelPool = switch poolFocus {
+        case .geminiOnly:
+            .gemini
+        case .anthropicOnly:
+            .anthropic
+        case .minBottleneck:
+            if let g = geminiLimiting, let a = anthropicLimiting {
+                (a.percent < g.percent) ? .anthropic : .gemini
+            } else if anthropicLimiting != nil {
+                .anthropic
+            } else {
+                .gemini
+            }
+        case .autoActiveModel:
+            detectedDesktopPool ?? payload.cliFallbackPool
+        }
+
+        let targetPoolBuckets: [ParsedAGYBucket] = switch activePool {
+        case .gemini:    geminiBuckets.isEmpty ? buckets : geminiBuckets
+        case .anthropic: anthropicBuckets.isEmpty ? buckets : anthropicBuckets
+        case .other:     buckets
+        }
+
+        let primaryBucket = targetPoolBuckets.min(by: {
+            ($0.percent, $0.isWeekly ? 0 : 1) < ($1.percent, $1.isWeekly ? 0 : 1)
+        }) ?? buckets[0]
+
+        // Order windows deterministically so Row 0 (`isPrimary = true`) ALWAYS matches Hero % & countdown:
+        // 1) Active pool limiting bucket (`isPrimary = true`)
+        // 2) Active pool remaining window(s)
+        // 3) Secondary pool limiting bucket + remaining window(s)
+        var orderedBuckets: [ParsedAGYBucket] = [primaryBucket]
+        for b in targetPoolBuckets.sorted(by: { ($0.isWeekly ? 1 : 0, $0.key) < ($1.isWeekly ? 1 : 0, $1.key) }) where b.key != primaryBucket.key {
+            orderedBuckets.append(b)
+        }
+
+        let siblingPoolBuckets: [ParsedAGYBucket] = (activePool == .anthropic) ? geminiBuckets : anthropicBuckets
+        if let sibLim = siblingPoolBuckets.min(by: { ($0.percent, $0.isWeekly ? 0 : 1) < ($1.percent, $1.isWeekly ? 0 : 1) }) {
+            if !orderedBuckets.contains(where: { $0.key == sibLim.key }) {
+                orderedBuckets.append(sibLim)
+            }
+            for b in siblingPoolBuckets.sorted(by: { ($0.isWeekly ? 1 : 0, $0.key) < ($1.isWeekly ? 1 : 0, $1.key) }) where !orderedBuckets.contains(where: { $0.key == b.key }) {
+                orderedBuckets.append(b)
+            }
+        }
+
+        for b in otherBuckets where !orderedBuckets.contains(where: { $0.key == b.key }) {
+            orderedBuckets.append(b)
+        }
+
+        let windows: [QuotaWindow] = orderedBuckets.enumerated().map { idx, b in
+            QuotaWindow(
+                label: b.label,
+                remainingPercent: b.percent,
+                resetsAt: b.resetsAt,
+                resetText: b.resetText,
+                isPrimary: idx == 0
+            )
+        }
+
+        let subtitle: String? = {
+            if let g = geminiLimiting, let a = anthropicLimiting {
+                let gInt = QuotaSnapshot.displayPercentInt(g.percent)
+                let aInt = QuotaSnapshot.displayPercentInt(a.percent)
+                let modePrefix: String = switch poolFocus {
+                case .autoActiveModel: "跟随 \(activePool.displayTitle)"
+                case .minBottleneck:   "双池最低"
+                case .geminiOnly:      "固定 Gemini"
+                case .anthropicOnly:   "固定 Anthropic"
+                }
+                return "\(modePrefix) · Gemini \(gInt)% / Anthropic \(aInt)%"
+            }
+            return nil
+        }()
+
+        return QuotaSnapshot(
+            agentID: .antigravity,
+            remainingPercent: primaryBucket.percent,
+            accountEmail: payload.email,
+            planTier: payload.planTier,
+            primaryLabel: primaryBucket.label,
+            resetsAt: primaryBucket.resetsAt,
+            resetText: primaryBucket.resetText,
+            windows: windows,
+            subtitle: subtitle,
+            isWorking: isWorking,
+            sourceDescription: "Antigravity CLI",
+            updatedAt: payload.fetchedAt
+        )
+    }
+
+    // MARK: - Real Antigravity Desktop Active Model Pool Reader (<0.5ms Tail Read)
+
+    static func detectActiveDesktopPool() -> AntigravityModelPool? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let brainRoot = "\(home)/.gemini/antigravity/brain"
+        let fm = FileManager.default
+        guard let convDirs = try? fm.contentsOfDirectory(atPath: brainRoot) else {
+            return nil
+        }
+
+        var newestPath: String?
+        var newestMtime: Date = .distantPast
+        let cutoff = Date().addingTimeInterval(-7 * 86_400)
+
+        for dir in convDirs where !dir.hasPrefix(".") {
+            let tp = "\(brainRoot)/\(dir)/.system_generated/logs/transcript.jsonl"
+            guard let attrs = try? fm.attributesOfItem(atPath: tp),
+                  let mtime = attrs[.modificationDate] as? Date,
+                  mtime > cutoff,
+                  mtime > newestMtime else {
+                continue
+            }
+            newestMtime = mtime
+            newestPath = tp
+        }
+
+        guard let targetPath = newestPath,
+              let fh = FileHandle(forReadingAtPath: targetPath) else {
+            return nil
+        }
+        defer { try? fh.close() }
+
+        let fileSize = (try? fh.seekToEnd()) ?? 0
+        guard fileSize > 0 else { return nil }
+        let readLen: UInt64 = min(fileSize, 49_152)
+        try? fh.seek(toOffset: fileSize - readLen)
+        let tailData = (try? fh.readToEnd()) ?? Data()
+        guard !tailData.isEmpty else { return nil }
+
+        let tailText = String(decoding: tailData, as: UTF8.self)
+        let lines = tailText.split(separator: "\n")
+
+        for rawLine in lines.reversed() {
+            guard let lineData = rawLine.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
+                continue
+            }
+
+            // 1. Check explicit user model dropdown switch (`<USER_SETTINGS_CHANGE> ... Model Selection ... to ...`)
+            if (obj["type"] as? String) == "USER_INPUT",
+               let content = obj["content"] as? String,
+               content.contains("Model Selection"),
+               let toRange = content.range(of: " to ", options: .backwards) {
+                let after = String(content[toRange.upperBound...]).prefix(64)
+                if let pool = classifyModelString(String(after)) {
+                    return pool
+                }
+            }
+
+            // 2. Check most recent model response (`PLANNER_RESPONSE.model`)
+            if let modelField = obj["model"] as? String,
+               let pool = classifyModelString(modelField) {
+                return pool
+            }
+        }
+
+        return nil
+    }
+
+    static func classifyModelString(_ raw: String) -> AntigravityModelPool? {
+        let lower = raw.lowercased()
+        guard !lower.isEmpty else { return nil }
+        if lower.contains("claude")
+            || lower.contains("anthropic")
+            || lower.contains("sonnet")
+            || lower.contains("opus")
+            || lower.contains("haiku")
+            || lower.contains("gpt")
+            || lower.contains("o1")
+            || lower.contains("o3")
+            || lower.contains("o4")
+            || lower.contains("3p") {
+            return .anthropic
+        }
+        if lower.contains("gemini")
+            || lower.contains("gemma")
+            || lower.contains("hydrogen")
+            || lower.contains("helium")
+            || lower.contains("lithium")
+            || lower.contains("beryllium")
+            || lower.contains("boron")
+            || lower.contains("carbon")
+            || lower.contains("nitrogen")
+            || lower.contains("oxygen")
+            || lower.contains("fluorine")
+            || lower.contains("neon") {
+            return .gemini
+        }
+        return nil
+    }
+
+    // MARK: - Helpers (ANSI Stripping, Tier Normalization, Working State)
 
     private static func cleanANSIText(_ data: Data) -> String {
         guard !data.isEmpty else { return "" }
@@ -436,7 +829,6 @@ public struct AntigravityProvider: UsageProvider {
         let text = cleanANSIText(data)
         guard !text.isEmpty else { return nil }
 
-        // 1. Authoritative match: `<email> (<Plan Tier>)` in Antigravity CLI banner
         if let emailTierRe = try? NSRegularExpression(pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\s*\\(([^)]{2,42})\\)") {
             let matches = emailTierRe.matches(in: text, range: NSRange(text.startIndex..., in: text))
             for m in matches.reversed() {
@@ -449,7 +841,6 @@ public struct AntigravityProvider: UsageProvider {
             }
         }
 
-        // 2. Explicit named Google AI / Workspace tier fallback
         if let namedRe = try? NSRegularExpression(pattern: "\\((Google AI [A-Za-z0-9 +._-]+|AI Ultra|AI Pro|Workspace [A-Za-z0-9 +._-]+|Enterprise)\\)", options: [.caseInsensitive]),
            let m = namedRe.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let r = Range(m.range(at: 1), in: text) {
@@ -474,192 +865,6 @@ public struct AntigravityProvider: UsageProvider {
         return trimmed
     }
 
-    private static func parseStatusLinePayload(_ root: [String: Any], bannerPlanTier: String?, isWorking: Bool) -> QuotaSnapshot? {
-        guard let quotaDict = root["quota"] as? [String: Any], !quotaDict.isEmpty else {
-            return nil
-        }
-
-        let email = (root["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawTier = ((root["plan_tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty)
-            ?? bannerPlanTier
-        let resolvedTier = rawTier.map(normalizeGooglePlanTier)
-
-        let modelDict = root["model"] as? [String: Any]
-        let modelDisplay = ((modelDict?["display_name"] as? String) ?? (modelDict?["id"] as? String))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let activeLower = (modelDisplay ?? "").lowercased()
-        let isThirdPartyActive = activeLower.contains("claude")
-            || activeLower.contains("gpt")
-            || activeLower.contains("sonnet")
-            || activeLower.contains("opus")
-            || activeLower.contains("o1")
-            || activeLower.contains("o3")
-
-        struct RawBucket {
-            let key: String
-            let isGemini: Bool
-            let isThirdParty: Bool
-            let isWeekly: Bool
-            let label: String
-            let percent: Double
-            let resetsAt: Date?
-            let sortOrder: Int
-        }
-
-        let now = Date()
-        var buckets: [RawBucket] = []
-
-        for (key, val) in quotaDict {
-            guard let info = val as? [String: Any] else { continue }
-            if (info["disabled"] as? Bool) == true { continue }
-
-            let resetDate: Date? = {
-                if let d = parseISODate(info["reset_time"] as? String) {
-                    return d
-                }
-                if let secs = (info["reset_in_seconds"] as? NSNumber)?.doubleValue, secs > 0 {
-                    return now.addingTimeInterval(secs)
-                }
-                return nil
-            }()
-
-            let fraction: Double
-            if let f = (info["remaining_fraction"] as? NSNumber)?.doubleValue {
-                fraction = f
-            } else if resetDate != nil {
-                fraction = 0.0
-            } else {
-                continue
-            }
-
-            let kLower = key.lowercased()
-            let isGemini = kLower.contains("gemini")
-            let isThirdParty = kLower.contains("3p") || kLower.contains("claude") || kLower.contains("gpt")
-            let isWeekly = kLower.contains("week") || (resetDate.map { $0.timeIntervalSince(now) > 26 * 3600 } ?? false)
-            let is5h = kLower.contains("5h") || kLower.contains("hour") || kLower.contains("session")
-
-            let groupName: String = if isGemini {
-                "Gemini"
-            } else if isThirdParty {
-                "Claude/GPT"
-            } else {
-                key
-            }
-
-            let windowKind: String = if isWeekly {
-                "周限额"
-            } else if is5h {
-                "5h 限额"
-            } else {
-                "限额"
-            }
-
-            let activePoolMatch = (isThirdPartyActive && isThirdParty) || (!isThirdPartyActive && isGemini)
-            let order: Int = switch (activePoolMatch, isWeekly) {
-            case (true, false): 0
-            case (true, true):  1
-            case (false, false): 2
-            case (false, true):  3
-            }
-
-            buckets.append(RawBucket(
-                key: key,
-                isGemini: isGemini,
-                isThirdParty: isThirdParty,
-                isWeekly: isWeekly,
-                label: "\(groupName) · \(windowKind)",
-                percent: max(0, min(100, fraction * 100.0)),
-                resetsAt: resetDate,
-                sortOrder: order
-            ))
-        }
-
-        guard !buckets.isEmpty else { return nil }
-        buckets.sort { ($0.sortOrder, $0.key) < ($1.sortOrder, $1.key) }
-
-        let activePoolBuckets = buckets.filter {
-            (isThirdPartyActive && $0.isThirdParty) || (!isThirdPartyActive && $0.isGemini)
-        }
-        let limitingBucket = (activePoolBuckets.isEmpty ? buckets : activePoolBuckets)
-            .min(by: { $0.percent < $1.percent }) ?? buckets[0]
-
-        let windows: [QuotaWindow] = buckets.enumerated().map { idx, b in
-            QuotaWindow(
-                label: b.label,
-                remainingPercent: b.percent,
-                resetsAt: b.resetsAt,
-                isPrimary: idx == 0
-            )
-        }
-
-        let subtitle: String? = if let m = modelDisplay, !m.isEmpty {
-            "当前模型 · \(m)"
-        } else {
-            nil
-        }
-
-        return QuotaSnapshot(
-            agentID: .antigravity,
-            remainingPercent: limitingBucket.percent,
-            accountEmail: (email?.isEmpty == false) ? email : nil,
-            planTier: resolvedTier,
-            primaryLabel: limitingBucket.label,
-            resetsAt: limitingBucket.resetsAt,
-            windows: windows,
-            subtitle: subtitle,
-            isWorking: isWorking,
-            sourceDescription: "Antigravity CLI"
-        )
-    }
-
-    // MARK: - Legacy Antigravity 1.x Local RPC (`--override_ide_name antigravity`)
-
-    private struct ServerInfo {
-        let pid: Int32
-        let csrfToken: String
-        let ports: [Int]
-    }
-
-    private static func discoverLegacyLanguageServer() -> ServerInfo? {
-        let psOut = runCapture("/bin/ps", args: ["-axww", "-o", "pid=,command="])
-        var targetPID: Int32?
-        var csrfToken: String?
-
-        for line in psOut.split(separator: "\n") {
-            let str = String(line)
-            guard str.contains("language_server"), str.contains("--override_ide_name antigravity") else { continue }
-            let trimmed = str.trimmingCharacters(in: .whitespaces)
-            let parts = trimmed.split(separator: " ", maxSplits: 1)
-            guard parts.count == 2, let pid = Int32(parts[0]) else { continue }
-            if let range = str.range(of: "--csrf_token ") {
-                let after = str[range.upperBound...]
-                let token = after.split(separator: " ").first.map(String.init)
-                if let token, !token.isEmpty {
-                    targetPID = pid
-                    csrfToken = token
-                    break
-                }
-            }
-        }
-
-        guard let pid = targetPID, let token = csrfToken else { return nil }
-
-        let lsofOut = runCapture("/usr/sbin/lsof", args: ["-Pan", "-p", "\(pid)", "-iTCP", "-sTCP:LISTEN"])
-        var ports: [Int] = []
-        for line in lsofOut.split(separator: "\n") {
-            let s = String(line)
-            if let colonRange = s.range(of: "127.0.0.1:") {
-                let after = s[colonRange.upperBound...]
-                let portStr = after.prefix(while: { $0.isNumber })
-                if let p = Int(portStr), !ports.contains(p) {
-                    ports.append(p)
-                }
-            }
-        }
-
-        return ports.isEmpty ? nil : ServerInfo(pid: pid, csrfToken: token, ports: ports)
-    }
-
     private static func parseISODate(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
         let fFrac = ISO8601DateFormatter()
@@ -676,303 +881,28 @@ public struct AntigravityProvider: UsageProvider {
         return nil
     }
 
-    private static func postLocalRPC(
-        port: Int,
-        csrfToken: String,
-        method: String,
-        bodyJSON: String
-    ) async -> [String: Any]? {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/\(method)") else {
-            return nil
-        }
-        var request = URLRequest(url: url, timeoutInterval: 2.5)
-        request.httpMethod = "POST"
-        request.httpBody = Data(bodyJSON.utf8)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
-        request.setValue(csrfToken, forHTTPHeaderField: "X-Codeium-Csrf-Token")
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                return nil
-            }
-            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        } catch {
-            return nil
-        }
-    }
-
-    private struct ParsedSummaryBucket {
-        let groupTitle: String
-        let bucketTitle: String
-        let isWeekly: Bool
-        let remainingPercent: Double
-        let resetsAt: Date?
-        let resetText: String?
-    }
-
-    private static func extractSummaryBuckets(from root: [String: Any]) -> [ParsedSummaryBucket] {
-        let payload: [String: Any]
-        if let resp = root["response"] as? [String: Any], resp["groups"] != nil {
-            payload = resp
-        } else if let sum = root["summary"] as? [String: Any], sum["groups"] != nil {
-            payload = sum
-        } else {
-            payload = root
-        }
-
-        guard let groups = payload["groups"] as? [[String: Any]], !groups.isEmpty else {
-            return []
-        }
-
-        var result: [ParsedSummaryBucket] = []
-        let now = Date()
-
-        for group in groups {
-            let rawGroup = ((group["displayName"] as? String) ?? (group["name"] as? String) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let groupTitle: String
-            let lowerG = rawGroup.lowercased()
-            if lowerG.contains("gemini") && !rawGroup.contains(where: \.isNumber) {
-                groupTitle = "Gemini"
-            } else if lowerG.contains("claude") || lowerG.contains("gpt") {
-                groupTitle = "Claude/GPT"
-            } else {
-                groupTitle = rawGroup.isEmpty ? "总额度" : rawGroup
-            }
-
-            let buckets = group["buckets"] as? [[String: Any]] ?? []
-            for bucket in buckets {
-                if (bucket["disabled"] as? Bool) == true { continue }
-
-                let bucketId = ((bucket["bucketId"] as? String) ?? (bucket["id"] as? String) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let rawDisplay = ((bucket["displayName"] as? String) ?? (bucket["name"] as? String) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let rawWindow = ((bucket["window"] as? String) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let resetDate = parseISODate(bucket["resetTime"] as? String)
-                let desc = bucket["description"] as? String
-
-                var fraction: Double? = (bucket["remainingFraction"] as? NSNumber)?.doubleValue
-                if fraction == nil, let remObj = bucket["remaining"] as? [String: Any] {
-                    fraction = (remObj["remainingFraction"] as? NSNumber)?.doubleValue
-                        ?? (remObj["value"] as? NSNumber)?.doubleValue
-                }
-                if fraction == nil && resetDate != nil {
-                    fraction = 0.0
-                }
-                guard let validFraction = fraction else { continue }
-
-                let combined = "\(bucketId) \(rawDisplay) \(rawWindow)".lowercased()
-                let isWeeklyByName = combined.contains("week") || combined.contains("7d") || combined.contains("168h") || combined.contains("周")
-                let isWeeklyByDate = resetDate.map { $0.timeIntervalSince(now) > 26 * 3600 } ?? false
-                let isWeekly = isWeeklyByName || isWeeklyByDate
-                let isSession = combined.contains("5h") || combined.contains("5-hour") || combined.contains("5_hour") || combined.contains("session") || combined.contains("hour")
-
-                let localizedKind: String
-                if isWeekly {
-                    localizedKind = "周限额"
-                } else if isSession {
-                    localizedKind = "5h 限额"
-                } else {
-                    localizedKind = rawDisplay.isEmpty ? bucketId : rawDisplay
-                }
-
-                result.append(ParsedSummaryBucket(
-                    groupTitle: groupTitle,
-                    bucketTitle: "\(groupTitle) · \(localizedKind)",
-                    isWeekly: isWeekly,
-                    remainingPercent: max(0, min(100, validFraction * 100.0)),
-                    resetsAt: resetDate,
-                    resetText: desc
-                ))
-            }
-        }
-        return result
-    }
-
-    private static func queryLegacyCombinedQuota(port: Int, csrfToken: String, isWorking: Bool) async -> QuotaSnapshot? {
-        async let summaryTask = postLocalRPC(
-            port: port,
-            csrfToken: csrfToken,
-            method: "RetrieveUserQuotaSummary",
-            bodyJSON: #"{"forceRefresh":true}"#
-        )
-        async let statusTask = postLocalRPC(
-            port: port,
-            csrfToken: csrfToken,
-            method: "GetUserStatus",
-            bodyJSON: #"{"metadata":{"ideName":"antigravity","extensionName":"antigravity","ideVersion":"unknown","locale":"en"}}"#
-        )
-
-        let (summaryRoot, statusRoot) = await (summaryTask, statusTask)
-        guard summaryRoot != nil || statusRoot != nil else {
-            return nil
-        }
-
-        let summaryBuckets = summaryRoot.map { extractSummaryBuckets(from: $0) } ?? []
-        let userStatus = statusRoot?["userStatus"] as? [String: Any]
-        let accountEmail = (userStatus?["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let planStatus = userStatus?["planStatus"] as? [String: Any]
-        let userTierDict = userStatus?["userTier"] as? [String: Any]
-        let tierID = (userTierDict?["id"] as? String)?.lowercased() ?? ""
-        let tierName = userTierDict?["name"] as? String
-        let legacyPlanName = (planStatus?["planInfo"] as? [String: Any])?["planName"] as? String
-        let resolvedPlanName: String? = {
-            if let tn = tierName, !tn.isEmpty { return tn }
-            if tierID.contains("ultra") { return "Google AI Ultra" }
-            if tierID.contains("pro")   { return "Google AI Pro" }
-            return legacyPlanName
-        }()
-        let promptCredits = planStatus?["availablePromptCredits"] as? Int
-
-        let cascadeData = userStatus?["cascadeModelConfigData"] as? [String: Any]
-        let models = cascadeData?["clientModelConfigs"] as? [[String: Any]] ?? []
-        let defaultModelID = ((cascadeData?["defaultOverrideModelConfig"] as? [String: Any])?["modelOrAlias"] as? [String: Any])?["model"] as? String
-
-        var modelWindows: [QuotaWindow] = []
-        var seenFamilies = Set<String>()
-        var primaryWindow: QuotaWindow?
-        let now = Date()
-
-        for model in models {
-            guard let label = model["label"] as? String,
-                  let quotaInfo = model["quotaInfo"] as? [String: Any] else {
-                continue
-            }
-
-            let resetDate = parseISODate(quotaInfo["resetTime"] as? String)
-            let fraction: Double
-            if let f = (quotaInfo["remainingFraction"] as? NSNumber)?.doubleValue {
-                fraction = f
-            } else if resetDate != nil {
-                fraction = 0.0
-            } else {
-                continue
-            }
-
-            let modelID = (model["modelOrAlias"] as? [String: Any])?["model"] as? String
-            let isSelected = (defaultModelID != nil && modelID == defaultModelID)
-            let family = Self.familyLabel(from: label)
-            let isMultiDayCap = resetDate.map { $0.timeIntervalSince(now) > 26 * 3600 } ?? false
-            let displayFamily = isMultiDayCap ? "\(family) · 周限" : family
-
-            if isSelected {
-                let w = QuotaWindow(
-                    label: "\(displayFamily) (当前)",
-                    remainingPercent: fraction * 100.0,
-                    resetsAt: resetDate,
-                    isPrimary: true
-                )
-                primaryWindow = w
-                if !seenFamilies.contains(family) {
-                    seenFamilies.insert(family)
-                    modelWindows.insert(w, at: 0)
-                }
-                continue
-            }
-
-            if seenFamilies.contains(family) { continue }
-            seenFamilies.insert(family)
-
-            modelWindows.append(QuotaWindow(
-                label: displayFamily,
-                remainingPercent: fraction * 100.0,
-                resetsAt: resetDate,
-                isPrimary: false
-            ))
-        }
-
-        var finalWindows: [QuotaWindow] = []
-        let weeklyBuckets = summaryBuckets.filter { $0.isWeekly }
-
-        if !modelWindows.isEmpty {
-            if let first = modelWindows.first {
-                finalWindows.append(first)
-            }
-            for wb in weeklyBuckets {
-                finalWindows.append(QuotaWindow(
-                    label: wb.bucketTitle,
-                    remainingPercent: wb.remainingPercent,
-                    resetsAt: wb.resetsAt,
-                    resetText: wb.resetText,
-                    isPrimary: false
-                ))
-            }
-            if modelWindows.count > 1 {
-                finalWindows.append(contentsOf: modelWindows.dropFirst())
-            }
-        } else if !summaryBuckets.isEmpty {
-            for (idx, sb) in summaryBuckets.enumerated() {
-                let w = QuotaWindow(
-                    label: sb.bucketTitle,
-                    remainingPercent: sb.remainingPercent,
-                    resetsAt: sb.resetsAt,
-                    resetText: sb.resetText,
-                    isPrimary: idx == 0
-                )
-                if idx == 0 { primaryWindow = w }
-                finalWindows.append(w)
-            }
-        }
-
-        if primaryWindow == nil, let first = finalWindows.first {
-            let promoted = QuotaWindow(
-                label: first.label,
-                remainingPercent: first.remainingPercent,
-                resetsAt: first.resetsAt,
-                resetText: first.resetText,
-                isPrimary: true
-            )
-            primaryWindow = promoted
-            finalWindows[0] = promoted
-        }
-
-        guard let activePrimary = primaryWindow else { return nil }
-
-        var effectiveRemaining = activePrimary.remainingPercent
-        var effectiveReset = activePrimary.resetsAt
-        let activeLower = activePrimary.label.lowercased()
-        for wb in weeklyBuckets {
-            let groupMatch = (activeLower.contains("gemini") && wb.groupTitle == "Gemini")
-                || ((activeLower.contains("claude") || activeLower.contains("gpt")) && wb.groupTitle == "Claude/GPT")
-            if groupMatch && wb.remainingPercent < effectiveRemaining {
-                effectiveRemaining = wb.remainingPercent
-                effectiveReset = wb.resetsAt ?? effectiveReset
-            }
-        }
-
-        var subtitleParts: [String] = []
-        if let promptCredits { subtitleParts.append("可用积分 \(promptCredits)") }
-
-        return QuotaSnapshot(
-            agentID: .antigravity,
-            remainingPercent: effectiveRemaining,
-            accountEmail: accountEmail,
-            planTier: resolvedPlanName,
-            primaryLabel: activePrimary.label,
-            resetsAt: effectiveReset,
-            windows: finalWindows,
-            subtitle: subtitleParts.isEmpty ? nil : subtitleParts.joined(separator: " · "),
-            isWorking: isWorking,
-            sourceDescription: "Antigravity 本地 RPC (:\(port))"
-        )
-    }
-
-    private static func familyLabel(from rawLabel: String) -> String {
-        let base = rawLabel.components(separatedBy: " (").first ?? rawLabel
-        if base.hasPrefix("Gemini 4 ") { return "Gemini 4" }
-        if base.hasPrefix("Orchestrator") { return "Orchestrator" }
-        return base
-    }
-
     private static func checkIsWorking() -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let summaryDB = "\(home)/.gemini/antigravity/conversation_summaries.db"
+        if FileManager.default.fileExists(atPath: summaryDB) {
+            var db: OpaquePointer?
+            if sqlite3_open_v2(summaryDB, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let db {
+                sqlite3_busy_timeout(db, 400)
+                defer { sqlite3_close(db) }
+                var stmt: OpaquePointer?
+                let sql = "SELECT 1 FROM conversation_summaries WHERE not_fully_idle = 1 AND killed = 0 LIMIT 1;"
+                if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt {
+                    defer { sqlite3_finalize(stmt) }
+                    if sqlite3_step(stmt) == SQLITE_ROW {
+                        return true
+                    }
+                }
+            }
+        }
+
         let paths = [
             "\(home)/.gemini/antigravity/cli.log",
-            "\(home)/.gemini/antigravity/conversation_summaries.db"
+            summaryDB
         ]
         let now = Date()
         for path in paths {

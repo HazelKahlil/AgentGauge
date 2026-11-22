@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MenuBarPopoverView: View {
     @ObservedObject var store = AgentGaugeStore.shared
+    @ObservedObject var updater = UpdateManager.shared
     let onOpenSettings: () -> Void
     let onOpenLogin: (AgentID) -> Void
     let onQuit: () -> Void
@@ -20,7 +21,15 @@ struct MenuBarPopoverView: View {
     }
 
     var body: some View {
+        let hasUpdateBanner = updater.state.hasUnreadUpdate
+
         VStack(spacing: 0) {
+            if hasUpdateBanner {
+                remoteUpdatePushBanner
+                    .frame(height: 32)
+                Divider().opacity(0.38)
+            }
+
             // Main Two-Column Split: Left = Monitored Apps, Right = Live Liquid Gauge Dashboard
             HStack(spacing: 0) {
                 leftAppList
@@ -32,7 +41,7 @@ struct MenuBarPopoverView: View {
                 rightModelDetail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(height: 302)
+            .frame(height: hasUpdateBanner ? 270 : 302)
 
             Divider().opacity(0.38)
 
@@ -49,6 +58,69 @@ struct MenuBarPopoverView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Remote Push Update Banner
+
+    @ViewBuilder
+    private var remoteUpdatePushBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+
+            switch updater.state {
+            case .available(let m):
+                Text(m.title ?? "发现新版本 v\(m.version)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                popoverGlassCapsuleButton(prominent: true) {
+                    Task { await updater.installUpdate(m) }
+                } label: {
+                    Text("一键更新")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .padding(.horizontal, 4)
+                }
+
+            case .downloading(let m, let progress):
+                Text("正在下载 v\(m.version)… \(Int(round(progress * 100)))%")
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .frame(width: 90)
+
+            case .installing(let m):
+                Text("正在原子覆盖并重启至 v\(m.version)…")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                ProgressView()
+                    .controlSize(.mini)
+
+            case .failed(let msg, let retryable):
+                Text(msg)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let m = retryable {
+                    popoverGlassCapsuleButton(prominent: false) {
+                        Task { await updater.installUpdate(m) }
+                    } label: {
+                        Text("重试")
+                            .font(.system(size: 10.5, weight: .semibold))
+                    }
+                }
+
+            default:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 12)
+        .background(Color.accentColor.opacity(0.08))
     }
 
     // MARK: - Left Column (Monitored Applications with Silky Sliding Selection Pill)
@@ -234,6 +306,10 @@ struct MenuBarPopoverView: View {
                     if let s = snap, s.remainingPercent != nil {
                         ScrollView(.vertical, showsIndicators: false) {
                             VStack(alignment: .leading, spacing: 9) {
+                                if agentID == .antigravity {
+                                    antigravityPoolSelector(accent: waterColor)
+                                }
+
                                 let wins = s.windows.isEmpty
                                     ? [QuotaWindow(
                                         label: "\(agentID.shortName) 总额度",
@@ -314,8 +390,42 @@ struct MenuBarPopoverView: View {
             return "\(c)"
         }
         guard let rem = snap.remainingPercent else { return nil }
-        let n = Int(round(rem))
+        let n = QuotaSnapshot.displayPercentInt(rem)
         return store.showPercentageSign ? "\(n)%" : "\(n)"
+    }
+
+    @ViewBuilder
+    private func antigravityPoolSelector(accent: Color) -> some View {
+        HStack(spacing: 3) {
+            ForEach(AntigravityPoolFocus.allCases) { mode in
+                let isSelected = (store.antigravityPoolFocus == mode)
+                Button {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                        store.antigravityPoolFocus = mode
+                    }
+                } label: {
+                    Text(mode.shortTitle)
+                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 20)
+                        .background(
+                            isSelected ? accent.opacity(0.18) : Color.clear,
+                            in: Capsule()
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(isSelected ? accent.opacity(0.38) : Color.clear, lineWidth: 0.7)
+                        )
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help(mode.helpDescription)
+            }
+        }
+        .padding(2.5)
+        .background(Color.primary.opacity(0.055), in: Capsule())
     }
 
     private func accountSubtitleLine(for snap: QuotaSnapshot?, badge: String?, fallback: String) -> String? {
@@ -348,7 +458,7 @@ struct MenuBarPopoverView: View {
         } else if isFirst, snapshot.isCreditsBased, let c = snapshot.creditsRemaining {
             valueStr = "\(c) 积分"
         } else {
-            let n = Int(round(win.remainingPercent))
+            let n = QuotaSnapshot.displayPercentInt(win.remainingPercent)
             valueStr = store.showPercentageSign ? "\(n)%" : "\(n)"
         }
 

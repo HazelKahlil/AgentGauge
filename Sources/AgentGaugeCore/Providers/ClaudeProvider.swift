@@ -6,10 +6,19 @@ private final class ClaudeKeychainCache: @unchecked Sendable {
     private var cachedOAuth: [String: Any]?
     private var lastRead: Date = .distantPast
 
+    func invalidate() {
+        lock.lock()
+        cachedOAuth = nil
+        lastRead = .distantPast
+        lock.unlock()
+    }
+
     func readOAuthDict() -> [String: Any]? {
         let now = Date()
         lock.lock()
-        if now.timeIntervalSince(lastRead) < 300.0 {
+        let hasValidToken = ((cachedOAuth?["accessToken"] as? String)?.isEmpty == false)
+        let ttl: TimeInterval = hasValidToken ? 300.0 : 15.0
+        if now.timeIntervalSince(lastRead) < ttl {
             let val = cachedOAuth
             lock.unlock()
             return val
@@ -46,6 +55,10 @@ public struct ClaudeProvider: UsageProvider {
     public let agentID: AgentID = .claude
 
     public init() {}
+
+    public static func invalidateCache() {
+        ClaudeKeychainCache.shared.invalidate()
+    }
 
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
@@ -115,20 +128,23 @@ public struct ClaudeProvider: UsageProvider {
                 if (uResp.ok) {
                   const u = await uResp.json();
                   const windows = [];
-                  const pushWin = (key, label, isPrimary) => {
+                  const pushWin = (key, label, isAccountWide) => {
                     const obj = u[key];
                     if (obj && typeof obj.utilization === 'number') {
-                      const pct = obj.utilization <= 1.0 ? obj.utilization * 100 : obj.utilization;
+                      // Anthropic utilization is 0..100 percentage points (e.g. 1.0 = 1% used = 99% remaining)
+                      const usedPct = Math.max(0, Math.min(100, obj.utilization));
                       windows.push({
+                        key,
                         label,
-                        remaining: Math.max(0, Math.min(100, 100 - pct)),
+                        remaining: Math.max(0, Math.min(100, 100 - usedPct)),
                         resetsAt: obj.resets_at || null,
-                        isPrimary
+                        isAccountWide
                       });
                     }
                   };
                   pushWin('five_hour', '5h 会话额度', true);
-                  pushWin('seven_day', '7d 周额度', false);
+                  pushWin('seven_day', '7d 周总额度', true);
+                  pushWin('seven_day_oauth_apps', 'Claude Code 周额度', true);
                   pushWin('seven_day_opus', 'Opus 周额度', false);
                   pushWin('seven_day_sonnet', 'Sonnet 周额度', false);
                   if (windows.length > 0) {
@@ -145,10 +161,11 @@ public struct ClaudeProvider: UsageProvider {
             usedMatches.slice(0, 4).forEach((m, idx) => {
               const rem = Math.max(0, Math.min(100, 100 - parseFloat(m[1])));
               windows.push({
-                label: idx === 0 ? '5h 当前窗口' : (idx === 1 ? '7d 周额度' : `窗口 ${idx + 1}`),
+                key: idx === 0 ? 'five_hour' : (idx === 1 ? 'seven_day' : `win_${idx}`),
+                label: idx === 0 ? '5h 当前窗口' : (idx === 1 ? '7d 周总额度' : `窗口 ${idx + 1}`),
                 remaining: rem,
                 resetsAt: null,
-                isPrimary: idx === 0
+                isAccountWide: idx <= 1
               });
             });
           }
@@ -225,23 +242,64 @@ public struct ClaudeProvider: UsageProvider {
             let isoFormatter = ISO8601DateFormatter()
             isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let isoFallback = ISO8601DateFormatter()
-            let resetText = result["resetText"] as? String
+            let fallbackResetText = result["resetText"] as? String
 
-            let windows: [QuotaWindow] = rawWindows.compactMap { item in
+            struct ParsedClaudeWin {
+                let key: String
+                let label: String
+                let remaining: Double
+                let resetsAt: Date?
+                let resetText: String?
+                let isAccountWide: Bool
+            }
+
+            let parsedWins: [ParsedClaudeWin] = rawWindows.compactMap { item in
                 guard let label = item["label"] as? String,
                       let rem = item["remaining"] as? Double else { return nil }
+                let key = (item["key"] as? String) ?? label
+                let isWide = (item["isAccountWide"] as? Bool) ?? true
                 var resetDate: Date? = nil
                 if let iso = item["resetsAt"] as? String {
                     resetDate = isoFormatter.date(from: iso) ?? isoFallback.date(from: iso)
                 }
-                let isPrimary = (item["isPrimary"] as? Bool) ?? false
-                return QuotaWindow(
+                let rText: String? = if resetDate != nil {
+                    nil
+                } else if key == "five_hour" && rem >= 99.95 {
+                    "未消耗"
+                } else {
+                    fallbackResetText
+                }
+                return ParsedClaudeWin(
+                    key: key,
                     label: label,
-                    remainingPercent: rem,
+                    remaining: rem,
                     resetsAt: resetDate,
-                    resetText: resetDate == nil ? resetText : nil,
-                    isPrimary: isPrimary
+                    resetText: rText,
+                    isAccountWide: isWide
                 )
+            }
+            guard !parsedWins.isEmpty else {
+                return QuotaSnapshot(agentID: .claude, remainingPercent: nil, isWorking: isWorking, sourceDescription: "Claude")
+            }
+
+            let gatePool = parsedWins.filter(\.isAccountWide)
+            let limiting = (gatePool.isEmpty ? parsedWins : gatePool)
+                .min(by: { $0.remaining < $1.remaining }) ?? parsedWins[0]
+
+            let ordered = [limiting] + parsedWins.filter { $0.key != limiting.key }
+            let windows: [QuotaWindow] = ordered.enumerated().map { idx, w in
+                QuotaWindow(
+                    label: w.label,
+                    remainingPercent: w.remaining,
+                    resetsAt: w.resetsAt,
+                    resetText: w.resetText,
+                    isPrimary: idx == 0
+                )
+            }
+
+            var subNotes: [String] = []
+            for mw in parsedWins where !mw.isAccountWide && mw.remaining <= 15.0 && mw.remaining < limiting.remaining {
+                subNotes.append("\(mw.label)仅剩 \(QuotaSnapshot.displayPercentInt(mw.remaining))%")
             }
 
             let resolvedEmail = (result["email"] as? String)?.nilIfEmpty ?? localMeta.email
@@ -250,17 +308,17 @@ public struct ClaudeProvider: UsageProvider {
                 rateLimitTier: result["rateTier"] as? String
             ) ?? localMeta.planTier
 
-            let primary = windows.first(where: { $0.isPrimary }) ?? windows.first
             let source = (result["source"] as? String) ?? "Claude"
             return QuotaSnapshot(
                 agentID: .claude,
-                remainingPercent: primary?.remainingPercent,
+                remainingPercent: limiting.remaining,
                 accountEmail: resolvedEmail,
                 planTier: resolvedPlan,
-                primaryLabel: "Claude",
-                resetsAt: primary?.resetsAt,
-                resetText: primary?.resetText ?? resetText,
+                primaryLabel: limiting.label,
+                resetsAt: limiting.resetsAt,
+                resetText: limiting.resetText ?? fallbackResetText,
                 windows: windows,
+                subtitle: subNotes.isEmpty ? nil : subNotes.joined(separator: " · "),
                 isWorking: isWorking,
                 sourceDescription: source
             )
@@ -286,7 +344,10 @@ public struct ClaudeProvider: UsageProvider {
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let oauth = (json["claudeAiOauth"] as? [String: Any]) ?? json
                 if let tok = (oauth["accessToken"] as? String)?.nilIfEmpty {
-                    accessToken = tok
+                    let expMs = (oauth["expiresAt"] as? Double) ?? 0
+                    if expMs <= 0 || expMs > Date().timeIntervalSince1970 * 1000.0 {
+                        accessToken = tok
+                    }
                 }
                 subType = subType ?? (oauth["subscriptionType"] as? String)
                 rateTier = rateTier ?? (oauth["rateLimitTier"] as? String)
@@ -361,45 +422,83 @@ public struct ClaudeProvider: UsageProvider {
             isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let isoStd = ISO8601DateFormatter()
 
+            struct RawClaudeBucket {
+                let key: String
+                let label: String
+                let remaining: Double
+                let resetsAt: Date?
+                let resetText: String?
+                let isAccountWide: Bool
+            }
+
             let bucketDefs: [(String, String, Bool)] = [
                 ("five_hour", "5h 会话额度", true),
-                ("seven_day", "7d 周额度", false),
+                ("seven_day", "7d 周总额度", true),
+                ("seven_day_oauth_apps", "Claude Code 周额度", true),
                 ("seven_day_opus", "Opus 周额度", false),
                 ("seven_day_sonnet", "Sonnet 周额度", false)
             ]
-            var windows: [QuotaWindow] = []
-            for (key, label, isPrim) in bucketDefs {
+            var parsed: [RawClaudeBucket] = []
+            for (key, label, isWide) in bucketDefs {
                 guard let obj = root[key] as? [String: Any],
-                      let util = obj["utilization"] as? Double else { continue }
-                let usedPct = util <= 1.0 ? util * 100.0 : util
+                      let util = (obj["utilization"] as? NSNumber)?.doubleValue else { continue }
+                // Anthropic `/api/oauth/usage` returns `utilization` in 0..100 percentage points
+                let usedPct = max(0, min(100, util))
                 let rem = max(0, min(100, 100.0 - usedPct))
                 let resetStr = obj["resets_at"] as? String
                 let resetDate = resetStr.flatMap { isoFrac.date(from: $0) ?? isoStd.date(from: $0) }
-                windows.append(QuotaWindow(label: label, remainingPercent: rem, resetsAt: resetDate, isPrimary: isPrim))
+                let resetText: String? = (resetDate == nil && key == "five_hour" && rem >= 99.95) ? "未消耗" : nil
+                parsed.append(RawClaudeBucket(
+                    key: key,
+                    label: label,
+                    remaining: rem,
+                    resetsAt: resetDate,
+                    resetText: resetText,
+                    isAccountWide: isWide
+                ))
             }
-            guard let primary = windows.first else { return nil }
+            guard !parsed.isEmpty else { return nil }
 
-            var subtitle: String?
+            // Series-gate bottleneck law: effective remaining = min(5h, 7d weekly)
+            let gatePool = parsed.filter(\.isAccountWide)
+            let limiting = (gatePool.isEmpty ? parsed : gatePool)
+                .min(by: { $0.remaining < $1.remaining }) ?? parsed[0]
+
+            let ordered = [limiting] + parsed.filter { $0.key != limiting.key }
+            let windows: [QuotaWindow] = ordered.enumerated().map { idx, b in
+                QuotaWindow(
+                    label: b.label,
+                    remainingPercent: b.remaining,
+                    resetsAt: b.resetsAt,
+                    resetText: b.resetText,
+                    isPrimary: idx == 0
+                )
+            }
+
+            var subtitleParts: [String] = []
+            for mb in parsed where !mb.isAccountWide && mb.remaining <= 15.0 && mb.remaining < limiting.remaining {
+                subtitleParts.append("\(mb.label)仅剩 \(QuotaSnapshot.displayPercentInt(mb.remaining))%")
+            }
             if let extra = root["extra_usage"] as? [String: Any],
                (extra["is_enabled"] as? Bool) == true {
                 let usedRaw = (extra["used_credits"] as? NSNumber)?.doubleValue ?? 0
                 let limitRaw = (extra["monthly_limit"] as? NSNumber)?.doubleValue ?? 0
-                // Anthropic returns credits in cents when >= 100 on standard $ limits, or direct dollars
                 if limitRaw > 0 {
                     let divisor = (limitRaw >= 500 && limitRaw.truncatingRemainder(dividingBy: 100) == 0) ? 100.0 : 1.0
-                    subtitle = String(format: "额外用量 $%.2f / $%.0f", usedRaw / divisor, limitRaw / divisor)
+                    subtitleParts.append(String(format: "额外用量 $%.2f / $%.0f", usedRaw / divisor, limitRaw / divisor))
                 }
             }
 
             return QuotaSnapshot(
                 agentID: .claude,
-                remainingPercent: primary.remainingPercent,
+                remainingPercent: limiting.remaining,
                 accountEmail: email,
                 planTier: planTier,
-                primaryLabel: "Claude",
-                resetsAt: primary.resetsAt,
+                primaryLabel: limiting.label,
+                resetsAt: limiting.resetsAt,
+                resetText: limiting.resetText,
                 windows: windows,
-                subtitle: subtitle,
+                subtitle: subtitleParts.isEmpty ? nil : subtitleParts.joined(separator: " · "),
                 isWorking: isWorking,
                 sourceDescription: "Claude 本地凭证"
             )

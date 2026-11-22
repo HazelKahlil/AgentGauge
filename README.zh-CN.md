@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.2.1-141413?style=flat-square" alt="Release v1.2.1" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.3.0-141413?style=flat-square" alt="Release v1.3.0" /></a>
     <img src="https://img.shields.io/badge/系统-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/引擎-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/已支持-30%2B%20主流大模型与套餐-478577?style=flat-square" alt="30+ 主流大模型与套餐" />
@@ -61,8 +61,10 @@
 
 ---
 
-## v1.2.1 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
+## v1.3.0 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
 
+- **Ed25519 数字签名远程推送热更新（`v1.3.0`）**：新增应用内远程更新推送、菜单栏与设置页一键静默下载覆盖并自动重启（基于 `CryptoKit` Ed25519 + SHA-256 双重校验，升级免重复触发系统拦截弹窗），同时自动接管清理旧版后台进程。
+- **第一性原理多算力池隔离与木桶串联引擎（`v1.3.0`）**：精准分离 Antigravity 内独立的 `Gemini` 与 `Anthropic` 模型限额池，支持 `<0.5ms` 桌面端活跃模型自动识别与四档读数池一键切换（`跟随模型` / `双池最低` / `Gemini` / `Anthropic`）；修复 Claude 低用量区间比例缩放缺陷，在 Claude 与 Codex 中统一执行 `min(5h, 周限)` 木桶串联定律，升级 `双轨微仪表` 低水位预警，并支持手动刷新全量穿透缓存。
 - **Dock 相邻图标缝隙零闪烁施密特防抖（`v1.2.1`）**：重构单一权威 60Hz `DockAXHitOutcome` 五态分类状态机，引入 `3.8–5.5pt` 施密特触发器迟滞死区（双向约 `17pt`）与空隙保持带，彻底消除开启 Dock 放大时鼠标停在两图标交界或缝隙处的来回闪烁跳变。
 - **11 款纯图标精选指示样式 + 统一光学水波**：定制「截图顶栏时间、动态反相字、微晶描边字、同心 R 角避让、光圈扇叶扫描、像素 LED 点阵、双轨微仪表、博朗圆弧指针、底部 5 格晶块、顶部灵动微岛、顶部弧形光眉」，全系共享招牌微泡折射水波与浅色图标低水位自适应增强。
 - **重力稳态 120Hz 水波物理与悬停水平导轨**：消除异步位移抖动，升级临界阻尼水面恢复，左右横滑时悬停卡片严格沿水平导轨丝滑平移、绝不上下跳动。
@@ -75,10 +77,14 @@
 
 ### 方式一：直接下载安装包（`.dmg`）
 
-- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-v1.2.1-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-v1.2.1-macOS.dmg)（`2.7 MB`）
-- **GitHub Releases 下载**：[**AgentGauge-v1.2.1-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-v1.2.1-macOS.dmg)
+- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)（`v1.3.0`，`2.7 MB`）
+- **GitHub Releases 下载**：[**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg)
+- **终端一行命令安装 / 旧版直接覆盖升级**：
+  ```bash
+  curl -fsSL https://usage.komorebi.date/install.sh | bash
+  ```
 
-1. 打开 `AgentGauge-v1.2.1-macOS.dmg`，将 **AgentGauge** 拖入 `/Applications`（应用程序）文件夹。
+1. 打开 `AgentGauge-macOS.dmg`，将 **AgentGauge** 拖入 `/Applications`（若从 `v1.1–v1.2.1` 旧版升级，也可直接双击镜像内的 `双击一键覆盖旧版.command`；升至 `v1.3.0+` 后均支持菜单栏一键远程推送更新）。
 2. 首次启动时按系统提示授予一次 **辅助功能（Accessibility）** 权限（仅用于判断鼠标当前悬停在哪个 Dock 图标上）。
 3. *(可选)* 若首次打开时遇到 macOS Gatekeeper 开发者验证提示，可在「系统设置 → 隐私与安全性」中点击**仍要打开**，或在终端执行：
    ```bash

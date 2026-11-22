@@ -66,6 +66,22 @@ public final class AgentGaugeStore: ObservableObject {
 
     private var lastNonOffTooltipMode: TooltipDetailMode = .multiModel
 
+    @Published public var antigravityPoolFocus: AntigravityPoolFocus {
+        didSet {
+            UserDefaults.standard.set(antigravityPoolFocus.rawValue, forKey: "AgentGauge.antigravityPoolFocus")
+            let focus = antigravityPoolFocus
+            Task.detached(priority: .userInitiated) {
+                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus) else { return }
+                await MainActor.run {
+                    let store = AgentGaugeStore.shared
+                    guard !store.promoFrozen else { return }
+                    store.snapshots[.antigravity] = updated
+                    store.overlayManager.updateSnapshots(store.snapshots)
+                }
+            }
+        }
+    }
+
     @Published public var numberColorMode: NumberColorMode {
         didSet {
             UserDefaults.standard.set(numberColorMode.rawValue, forKey: "AgentGauge.numberColorMode")
@@ -173,6 +189,7 @@ public final class AgentGaugeStore: ObservableObject {
     private var permissionCheckTimer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var isSystemSleeping: Bool = false
+    private var lastFastWakeSyncAt: Date = .distantPast
 
     private init() {
         let defaults = UserDefaults.standard
@@ -263,6 +280,13 @@ public final class AgentGaugeStore: ObservableObject {
             self.tooltipDetailMode = .multiModel
         }
 
+        if let poolRaw = defaults.string(forKey: "AgentGauge.antigravityPoolFocus"),
+           let poolMode = AntigravityPoolFocus(rawValue: poolRaw) {
+            self.antigravityPoolFocus = poolMode
+        } else {
+            self.antigravityPoolFocus = .autoActiveModel
+        }
+
         if !defaults.bool(forKey: "AgentGauge.migratedSmartInvert.v1") {
             defaults.set(true, forKey: "AgentGauge.migratedSmartInvert.v1")
             defaults.set(NumberColorMode.smartInvert.rawValue, forKey: "AgentGauge.numberColorMode")
@@ -295,10 +319,15 @@ public final class AgentGaugeStore: ObservableObject {
 
         if let savedColors = defaults.dictionary(forKey: "AgentGauge.customWaterColors") as? [String: String] {
             var parsed: [AgentID: String] = [:]
+            var cleanedDict: [String: String] = [:]
             for (k, v) in savedColors {
                 if let id = AgentID(rawValue: k) {
                     parsed[id] = v
+                    cleanedDict[k] = v
                 }
+            }
+            if cleanedDict.count != savedColors.count {
+                defaults.set(cleanedDict, forKey: "AgentGauge.customWaterColors")
             }
             self.customWaterColors = parsed
         } else {
@@ -322,7 +351,10 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.2.1 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        AppLogger.shared.log("System", "AgentGauge v1.3.0 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        overlayManager.onWakeNearDock = { [weak self] in
+            self?.syncFastLocalStateOnUIWake()
+        }
         pushSettingsToOverlay()
         overlayManager.start()
         registerSleepWakeObservers()
@@ -496,6 +528,37 @@ public final class AgentGaugeStore: ObservableObject {
         overlayManager.updateSnapshots(snapshots)
     }
 
+    /// Ultra-lightweight (<0.5ms off-main-thread) sync triggered when the pointer approaches the Dock or opens the Menu Bar popover:
+    /// 1) Re-resolves Antigravity's active model pool (`Gemini` vs `Anthropic`) immediately after model dropdown switches;
+    /// 2) Triggers background refresh for any enabled provider whose `resetsAt` deadline has just passed.
+    public func syncFastLocalStateOnUIWake() {
+        guard !promoFrozen, !isSystemSleeping else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastFastWakeSyncAt) >= 2.0 else { return }
+        lastFastWakeSyncAt = now
+
+        if enabledAgents.contains(.antigravity) {
+            let focus = antigravityPoolFocus
+            Task.detached(priority: .userInitiated) {
+                guard let reevaluated = AntigravityProvider.reevaluateFromCache(poolFocus: focus) else { return }
+                await MainActor.run {
+                    let store = AgentGaugeStore.shared
+                    guard !store.promoFrozen else { return }
+                    if store.snapshots[.antigravity] != reevaluated {
+                        store.snapshots[.antigravity] = reevaluated
+                        store.overlayManager.updateSnapshots(store.snapshots)
+                    }
+                }
+            }
+        }
+
+        for id in enabledAgents {
+            if let snap = snapshots[id], let r = snap.resetsAt, now >= r {
+                Task { await refresh(agentID: id, forceWebProbe: false) }
+            }
+        }
+    }
+
     public func refreshAll(forceWebProbe: Bool = false) async {
         guard !promoFrozen else { return }
         guard !isRefreshing else { return }
@@ -503,7 +566,7 @@ public final class AgentGaugeStore: ObservableObject {
         defer { isRefreshing = false }
 
         if forceWebProbe {
-            WorkBuddyProvider.invalidateCache()
+            ProviderRegistry.invalidateCaches(for: nil)
         }
 
         let activeProviders = providers.filter { enabledAgents.contains($0.agentID) }
@@ -518,8 +581,8 @@ public final class AgentGaugeStore: ObservableObject {
 
     public func refresh(agentID: AgentID, forceWebProbe: Bool = false) async {
         guard !promoFrozen else { return }
-        if forceWebProbe && agentID == .workbuddy {
-            WorkBuddyProvider.invalidateCache()
+        if forceWebProbe {
+            ProviderRegistry.invalidateCaches(for: agentID)
         }
         guard let provider = providers.first(where: { $0.agentID == agentID }) else { return }
         await refreshProvider(provider, forceWebProbe: forceWebProbe)
