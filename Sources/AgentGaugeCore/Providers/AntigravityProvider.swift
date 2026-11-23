@@ -178,54 +178,6 @@ public struct AntigravityProvider: UsageProvider {
         return buildSnapshot(from: payload, poolFocus: focus, detectedDesktopPool: desktopPool, isWorking: isWorking)
     }
 
-    /// Dedicated Gemini-only pool reader for standalone `GeminiProvider` fallback (never mixes in Anthropic 3P pool!).
-    public static func fetchGeminiPoolOnly(isGeminiAppRunning: Bool) async -> QuotaSnapshot? {
-        let isAGYRunning = await MainActor.run {
-            !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.antigravity").isEmpty
-        }
-        let isAGYWorking = checkIsWorking()
-
-        var payload = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAGYRunning, isWorking: isAGYWorking)
-        if payload == nil {
-            payload = await AntigravityCLISingleFlight.shared.fetch {
-                Self.fetchViaDocumentedAGYStatusLine()
-            }
-            if let fresh = payload {
-                AntigravityEndpointCache.shared.setPayload(fresh)
-            }
-        }
-        guard let payload else { return nil }
-
-        let geminiBuckets = payload.buckets.filter { $0.pool == .gemini }
-        guard !geminiBuckets.isEmpty else { return nil }
-
-        let limiting = geminiBuckets.min(by: { $0.percent < $1.percent }) ?? geminiBuckets[0]
-        let ordered = [limiting] + geminiBuckets.filter { $0.key != limiting.key }
-        let windows = ordered.enumerated().map { idx, b in
-            QuotaWindow(
-                label: b.label,
-                remainingPercent: b.percent,
-                resetsAt: b.resetsAt,
-                resetText: b.resetText,
-                isPrimary: idx == 0
-            )
-        }
-
-        return QuotaSnapshot(
-            agentID: .gemini,
-            remainingPercent: limiting.percent,
-            accountEmail: payload.email,
-            planTier: payload.planTier,
-            primaryLabel: limiting.label,
-            resetsAt: limiting.resetsAt,
-            resetText: limiting.resetText,
-            windows: windows,
-            isWorking: isGeminiAppRunning,
-            sourceDescription: "Google AI 订阅池 (Gemini)",
-            updatedAt: payload.fetchedAt
-        )
-    }
-
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
         let isAppRunning = await MainActor.run {

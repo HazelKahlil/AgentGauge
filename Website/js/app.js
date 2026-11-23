@@ -1287,7 +1287,30 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.3.0", id: "v1-3-0", date: "2026-11-22", latest: true,
+      ver: "v1.3.1", id: "v1-3-1", date: "2026-11-23", latest: true,
+      title: [
+        "Cross-product quota boundary isolation (Gemini.app vs Antigravity, Grok.app vs Grok Bot) & anti-noise scraping",
+        "全目录跨产品独立额度池硬隔离（Gemini.app / Antigravity、Grok.app / Grok Bot）与防误采校准",
+      ],
+      summary: [
+        "Decouples standalone consumer apps from developer coding-agent quota pools even under the same subscription account, eliminates conversational false positives during web scraping, and locks multi-variant Dock tiles strictly to the hovered bundle ID.",
+        "即便登录同一订阅账号，消费级对话客户端与开发者编程智能体亦拥有独立计费桶与重置时间：彻底解耦 Gemini.app 与 Antigravity、Grok.app 与 Grok Bot，剥离聊天文本防误采，并锁定多变体 Dock 图标精准投递。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>Strict Product-Boundary Quota Isolation (<code>Gemini.app</code> vs <code>Antigravity</code>, <code>Grok.app</code> vs <code>Grok Bot</code>)</b>: Standalone <code>Gemini.app</code> (<code>com.google.GeminiMacOS</code>) never borrows <code>Antigravity</code> developer buckets and instead parses <code>gemini.google.com/usage</code> (<code>Current usage</code> + <code>Weekly limit</code>) directly; consumer <code>Grok.app</code> (<code>com.grokapp.desktop</code>) never borrows <code>Grok Bot</code> coding quota; and <code>Cursor</code> ↔ <code>Grok Bot</code> additionally checks <code>&le;300s</code> reset-epoch agreement.",
+            "<b>跨产品线独立额度池硬隔离（<code>Gemini.app</code> vs <code>Antigravity</code>、<code>Grok.app</code> vs <code>Grok Bot</code>）</b>：独立版 <code>Gemini.app</code> 不再借用 <code>Antigravity</code> 开发者池，改为专属解析 <code>gemini.google.com/usage</code>「当前用量 + 每周限额」；消费级 <code>Grok.app</code> 不再借用 <code>Grok Bot</code> 编程周额度；<code>Cursor</code> ↔ <code>Grok Bot</code> 额外校验重置时间偏差（<code>&le;5 分钟</code>）防串池。",
+          ],
+          [
+            "<b>Anti-Noise DOM Quota Extraction, Console Billing URLs &amp; Multi-Variant Dock Targeting</b>: <code>GenericWebUsageProvider</code> strips chat messages, <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> blocks, and markdown bodies before quota matching, adds trailing currency parsing (<code>CNY</code>/<code>RMB</code>/<code>USD</code>/<code>元</code>) and <code>360s</code> caching, updates <code>Qwen</code> &amp; <code>MiniMax</code> console billing URLs, and locks <code>NativeTileChannel</code> to the exact hovered <code>bundleID</code> when variants (<code>Zed</code> / <code>Zed Preview</code>, <code>WorkBuddy</code> / <code>CodeBuddy</code>) coexist.",
+            "<b>网页会话防误采、控制台账单直达与多变体 Dock 精准投递</b>：网页采集自动剥离聊天气泡与代码块，新增后置币种单位（<code>CNY</code>/<code>RMB</code>/<code>USD</code>/<code>元</code>）识别与快照缓存，校准千问百炼与 MiniMax 余额页入口，并确保多变体应用并存时仅点亮鼠标当前悬停的精确图标。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.3.0", id: "v1-3-0", date: "2026-11-22",
       title: [
         "Ed25519 signed remote push auto-updater & Gemini vs Anthropic dual-pool engine",
         "Ed25519 签名远程推送热更新系统与第一性原理双算力池引擎",

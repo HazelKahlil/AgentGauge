@@ -351,7 +351,7 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.3.0 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        AppLogger.shared.log("System", "AgentGauge v1.3.1 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
         overlayManager.onWakeNearDock = { [weak self] in
             self?.syncFastLocalStateOnUIWake()
         }

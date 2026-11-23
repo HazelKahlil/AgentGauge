@@ -41,7 +41,7 @@ public enum ProviderRegistry {
             case .antigravity:
                 AntigravityProvider.invalidateCache()
             case .gemini:
-                AntigravityProvider.invalidateCache()
+                GeminiProvider.invalidateCache()
             case .codex:
                 CodexProvider.invalidateCache()
             case .claude:
@@ -52,14 +52,17 @@ public enum ProviderRegistry {
                 WorkBuddyProvider.invalidateCache()
             default:
                 EcosystemCacheControl.invalidate(for: id)
+                GenericWebUsageProvider.invalidateCache(for: id)
             }
         } else {
             AntigravityProvider.invalidateCache()
+            GeminiProvider.invalidateCache()
             CodexProvider.invalidateCache()
             ClaudeProvider.invalidateCache()
             CursorProvider.invalidateCache()
             WorkBuddyProvider.invalidateCache()
             EcosystemCacheControl.invalidate(for: nil)
+            GenericWebUsageProvider.invalidateCache(for: nil)
         }
     }
 }

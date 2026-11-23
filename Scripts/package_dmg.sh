@@ -11,8 +11,8 @@ if [ ! -d "${APP_PATH}" ]; then
   exit 1
 fi
 
-SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "1.3.0")
-BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "130")
+SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "1.3.1")
+BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "131")
 DMG_NAME="AgentGauge-v${SHORT_VERSION}-macOS.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 EVERGREEN_DMG_PATH="${OUT_DIR}/AgentGauge-macOS.dmg"
@@ -71,7 +71,7 @@ ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${OTA_ZIP_PATH}"
 ZIP_SHA256=$(shasum -a 256 "${OTA_ZIP_PATH}" | awk '{print $1}')
 
 # 3. Cryptographically sign OTA Manifest (`Website/updates/latest.json`) with Ed25519 Private Key
-RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 远程推送热更新与第一性原理双算力池引擎}"
+RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 全目录跨产品独立额度池硬隔离与防误采校准}"
 SHORT_VERSION="${SHORT_VERSION}" \
 BUILD_VERSION="${BUILD_VERSION}" \
 ZIP_SHA256="${ZIP_SHA256}" \
@@ -82,8 +82,8 @@ import CryptoKit
 import Foundation
 
 let env = ProcessInfo.processInfo.environment
-let version = env["SHORT_VERSION"] ?? "1.3.0"
-let build = Int(env["BUILD_VERSION"] ?? "130") ?? 130
+let version = env["SHORT_VERSION"] ?? "1.3.1"
+let build = Int(env["BUILD_VERSION"] ?? "131") ?? 131
 let sha256 = (env["ZIP_SHA256"] ?? "").lowercased()
 let title = env["RELEASE_TITLE"] ?? "v\(version)"
 let outPath = env["MANIFEST_OUT"]!
@@ -109,10 +109,10 @@ let manifest: [String: Any] = [
     "urgency": "recommended",
     "title": title,
     "notes": [
-        "支持远程更新推送：菜单栏与设置页一键静默下载、Ed25519 签名校验、原子覆盖并自动重启",
-        "Antigravity 独立分离 Gemini 与 Anthropic 模型限额池，<0.5ms 追踪当前对话模型并支持四档池切换",
-        "修复 Claude 低用量比例缩放，Claude 与 Codex 统一执行 min(5h, 周限) 木桶串联规则",
-        "升级双轨微仪表双池低水位变红预警，手动刷新立即穿透全部缓存"
+        "解耦 Gemini.app 与 Antigravity 独立额度池，专属解析 Gemini「当前用量 + 每周限额」",
+        "解耦消费级 Grok.app 与编程智能体 Grok Bot 额度池，Grok Bot ↔ Cursor 增加重置周期一致性校验",
+        "网页额度采集自动剔除对话气泡与代码块防误判，校准千问百炼与 MiniMax 账单入口",
+        "多变体应用（Zed / Zed Preview、WorkBuddy / CodeBuddy 等）Dock 磁贴严格按当前悬停 Bundle ID 投递"
     ],
     "zipUrl": "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip",
     "fallbackZipUrl": "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",

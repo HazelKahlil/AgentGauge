@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.1] - 2026-11-23
+
+### Fixed / 修复
+
+- **Strict Product-Boundary Quota Isolation (`Gemini.app` vs `Antigravity`, `Grok.app` vs `Grok Bot`)**: Completely decoupled standalone consumer `Gemini.app` (`com.google.GeminiMacOS`) from `Antigravity.app` (`com.google.antigravity`) and `Gemini CLI` (`cloudcode-pa`), and decoupled consumer `Grok.app` (`com.grokapp.desktop`) from Anysphere's coding agent `Grok Bot.app` (`com.anysphere.sand`). Even under the same Google AI Ultra or xAI subscription, consumer chat apps and developer coding agents maintain separate billing buckets and reset epochs; `GeminiProvider` now parses `gemini.google.com/usage` (`当前用量 / Current usage` + `每周限额 / Weekly limit`) directly with `min(current, weekly)` bottleneck dominance, while `GrokBotProvider` ↔ `CursorProvider` additionally verifies `<= 300s` reset-epoch agreement before sharing unified quota readings.  
+  **严格跨产品独立额度池硬隔离（`Gemini.app` vs `Antigravity`、`Grok.app` vs `Grok Bot`）**：彻底解耦消费级 `Gemini.app`（`com.google.GeminiMacOS`）与开发者 `Antigravity.app` / `Gemini CLI` 的算力池，并解耦消费级对话端 `Grok.app`（`com.grokapp.desktop`）与编程智能体 `Grok Bot.app`（`com.anysphere.sand`）的周限额池——即便同属一个 Google AI Ultra 或 xAI 账号，不同产品线亦拥有各自独立的计费桶与重置周期；`GeminiProvider` 现直连解析 `gemini.google.com/usage`（「当前用量」+「每周限额」取 `min` 瓶颈），`Grok Bot` ↔ `Cursor` 互通则额外增加重置时间戳一致性校验（偏差 `<= 5 分钟` 才视为同一合并池）。
+- **Chat-Bubble False-Positive Prevention, Console Billing URLs & Multi-Variant Dock Tile Targeting**: `GenericWebUsageProvider` now strips user chat messages, `<pre>`/`<code>` blocks, and `.prose`/`.markdown-body` nodes before quota extraction so percentages discussed inside conversations are never mistaken for account quota, adds `360s` snapshot caching + trailing currency code parsing (`CNY`/`RMB`/`USD`/`元`), updates `Qwen` (`bailian.console.aliyun.com/#/efm/coding_plan`) and `MiniMax` (`platform.minimaxi.com/user-center/payment/balance`) billing URLs, and locks `NativeTileChannel.draw` strictly to the hovered Dock icon's exact `bundleID` when multi-variant apps (`Zed` vs `Zed Preview`, `WorkBuddy` vs `CodeBuddy`) coexist on the Dock.  
+  **防对话文本误采、控制台账单直连校准与多变体 Dock 磁贴精准投递**：`GenericWebUsageProvider` 在提取网页额度前自动剥离聊天消息气泡、代码块与 Markdown 正文，杜绝对话中提及的百分比被误判为账户配额，补齐缓存与后置币种单位（`CNY`/`RMB`/`USD`/`元`）识别，校准千问百炼 Coding Plan 与 MiniMax 余额页直达地址；同时令 `NativeTileChannel` 严格锁定鼠标当前悬停的精确 `bundleID`，避免同系多变体应用（如 `Zed` 与 `Zed Preview`）并存时点亮相邻未悬停图标。
+
+---
+
 ## [1.3.0] - 2026-11-22
 
 ### Added / 新增

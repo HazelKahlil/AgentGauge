@@ -118,9 +118,10 @@ public struct CursorProvider: UsageProvider {
                 CursorSnapshotCache.shared.set(snapshot)
                 return snapshot
             }
-            // Unified Anysphere/xAI offline cross-fallback when account is Grok-linked
+            // Unified Anysphere/xAI offline cross-fallback ONLY when verified as the same linked account slot
             if localAuth.signUpType?.lowercased() == "grok",
-               let sandCache = GrokBotProvider.readSandPersistenceUsage(matchingEmailFrom: localAuth) {
+               let sandCache = GrokBotProvider.readSandPersistenceUsage(matchingEmailFrom: localAuth),
+               (sandCache.activeSlot == localAuth.authId || sandCache.activeSlot == nil || sandCache.activeSlot?.lowercased().hasPrefix("grok|") == true) {
                 return QuotaSnapshot(
                     agentID: .cursor,
                     remainingPercent: sandCache.remainingPercent,

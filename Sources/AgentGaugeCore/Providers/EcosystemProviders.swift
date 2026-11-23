@@ -597,46 +597,24 @@ public struct GrokDesktopProvider: UsageProvider {
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isRunning = await CopilotProvider.isAppRunning(.grok)
 
-        // 1. Check explicit grok.com WebView cookies if user connected Grok Web
-        if await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: AgentID.grok.cookieDomainSuffixes) {
+        // Strict Product Isolation: Consumer `Grok.app` (`grok.com` rolling 2h chat windows) is independent from
+        // `Grok Bot` (`com.anysphere.sand` weekly coding agent pool) — never paste Grok Bot's coding quota onto Grok.app!
+        let verifiedRaw = UserDefaults.standard.stringArray(forKey: "AgentGauge.webAuthVerified") ?? []
+        if verifiedRaw.contains(AgentID.grok.rawValue),
+           await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: AgentID.grok.cookieDomainSuffixes) {
             let webSnap = await GenericWebUsageProvider(agentID: .grok).fetchSnapshot()
             if webSnap.remainingPercent != nil {
                 return CopilotProvider.withWorking(webSnap, isWorking: isRunning)
             }
         }
 
-        // 2. Share real xAI SuperGrok / Premium quota from local Grok Bot / Anysphere xAI-linked account on the same Mac
-        let cursorAuth = CursorProvider.readLocalAuthState()
-        if let sand = GrokBotProvider.readSandPersistenceUsage(matchingEmailFrom: cursorAuth) {
-            return QuotaSnapshot(
-                agentID: .grok,
-                remainingPercent: sand.remainingPercent,
-                accountEmail: sand.email,
-                planTier: sand.planTier,
-                primaryLabel: "Grok 额度",
-                resetsAt: sand.resetsAt,
-                windows: [
-                    QuotaWindow(
-                        label: "xAI / SuperGrok 周期额度",
-                        remainingPercent: sand.remainingPercent,
-                        resetsAt: sand.resetsAt,
-                        isPrimary: true
-                    )
-                ],
-                subtitle: String(format: "本机 xAI 账号同步 · 已用 %.1f%%", sand.usedPercent),
-                isWorking: isRunning,
-                sourceDescription: "本机 xAI 账号同步"
-            )
-        }
-
-        // Strict Telemetry Honesty: never fabricate 100% when no xAI quota source is authenticated!
         return QuotaSnapshot(
             agentID: .grok,
             remainingPercent: nil,
             isWorking: isRunning,
             sourceDescription: "Grok 未连接",
             requiresWebLogin: true,
-            errorMessage: "点击「登录」连接 SuperGrok 账号同步额度"
+            errorMessage: "点击「登录」连接 grok.com 同步对话额度（与 Grok Bot 独立计费）"
         )
     }
 }

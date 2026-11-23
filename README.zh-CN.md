@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.3.0-141413?style=flat-square" alt="Release v1.3.0" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.3.1-141413?style=flat-square" alt="Release v1.3.1" /></a>
     <img src="https://img.shields.io/badge/系统-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/引擎-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/已支持-30%2B%20主流大模型与套餐-478577?style=flat-square" alt="30+ 主流大模型与套餐" />
@@ -61,8 +61,9 @@
 
 ---
 
-## v1.3.0 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
+## v1.3.1 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
 
+- **跨产品独立额度池硬隔离与防误采校准（`v1.3.1`）**：彻底解耦消费级 `Gemini.app`（专属解析 `gemini.google.com/usage` 当前用量 + 每周限额）与 `Antigravity` 开发者算力池，解耦消费级对话应用 `Grok.app` 与编程智能体 `Grok Bot` 周额度池，为 `Cursor` ↔ `Grok Bot` 增加重置时间戳一致性校验，自动剥离网页聊天消息与代码块防误判，并锁定多变体应用（`Zed` / `Zed Preview`、`WorkBuddy` / `CodeBuddy`）按当前悬停图标精准渲染。
 - **Ed25519 数字签名远程推送热更新（`v1.3.0`）**：新增应用内远程更新推送、菜单栏与设置页一键静默下载覆盖并自动重启（基于 `CryptoKit` Ed25519 + SHA-256 双重校验，升级免重复触发系统拦截弹窗），同时自动接管清理旧版后台进程。
 - **第一性原理多算力池隔离与木桶串联引擎（`v1.3.0`）**：精准分离 Antigravity 内独立的 `Gemini` 与 `Anthropic` 模型限额池，支持 `<0.5ms` 桌面端活跃模型自动识别与四档读数池一键切换（`跟随模型` / `双池最低` / `Gemini` / `Anthropic`）；修复 Claude 低用量区间比例缩放缺陷，在 Claude 与 Codex 中统一执行 `min(5h, 周限)` 木桶串联定律，升级 `双轨微仪表` 低水位预警，并支持手动刷新全量穿透缓存。
 - **Dock 相邻图标缝隙零闪烁施密特防抖（`v1.2.1`）**：重构单一权威 60Hz `DockAXHitOutcome` 五态分类状态机，引入 `3.8–5.5pt` 施密特触发器迟滞死区（双向约 `17pt`）与空隙保持带，彻底消除开启 Dock 放大时鼠标停在两图标交界或缝隙处的来回闪烁跳变。
@@ -77,7 +78,7 @@
 
 ### 方式一：直接下载安装包（`.dmg`）
 
-- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)（`v1.3.0`，`2.7 MB`）
+- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)（`v1.3.1`，`2.7 MB`）
 - **GitHub Releases 下载**：[**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg)
 - **终端一行命令安装 / 旧版直接覆盖升级**：
   ```bash

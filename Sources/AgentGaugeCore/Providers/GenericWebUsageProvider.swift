@@ -1,6 +1,55 @@
 import AppKit
 import Foundation
 
+private final class GenericWebSnapshotCache: @unchecked Sendable {
+    static let shared = GenericWebSnapshotCache()
+    private let lock = NSLock()
+    private var entries: [AgentID: (snap: QuotaSnapshot, at: Date)] = [:]
+
+    func invalidate(for id: AgentID? = nil) {
+        lock.lock()
+        if let id {
+            entries.removeValue(forKey: id)
+        } else {
+            entries.removeAll()
+        }
+        lock.unlock()
+    }
+
+    func get(for id: AgentID, maxAge: TimeInterval, isWorking: Bool) -> QuotaSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let item = entries[id], Date().timeIntervalSince(item.at) <= maxAge else {
+            return nil
+        }
+        let c = item.snap
+        return QuotaSnapshot(
+            agentID: c.agentID,
+            remainingPercent: c.remainingPercent,
+            creditsRemaining: c.creditsRemaining,
+            creditsTotal: c.creditsTotal,
+            balanceDisplay: c.balanceDisplay,
+            dockBalanceShort: c.dockBalanceShort,
+            accountEmail: c.accountEmail,
+            planTier: c.planTier,
+            primaryLabel: c.primaryLabel,
+            resetsAt: c.resetsAt,
+            resetText: c.resetText,
+            windows: c.windows,
+            subtitle: c.subtitle,
+            isWorking: isWorking,
+            sourceDescription: c.sourceDescription,
+            updatedAt: c.updatedAt
+        )
+    }
+
+    func set(_ snap: QuotaSnapshot, for id: AgentID) {
+        lock.lock()
+        entries[id] = (snap, Date())
+        lock.unlock()
+    }
+}
+
 /// Universal provider powering all mainstream Coding Agents & AI Desktop Apps in the 32-agent catalog.
 public struct GenericWebUsageProvider: UsageProvider {
     public let agentID: AgentID
@@ -9,11 +58,20 @@ public struct GenericWebUsageProvider: UsageProvider {
         self.agentID = agentID
     }
 
+    public static func invalidateCache(for id: AgentID? = nil) {
+        GenericWebSnapshotCache.shared.invalidate(for: id)
+    }
+
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isRunning = await MainActor.run {
             agentID.bundleIdentifiers.contains { bid in
                 !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
             }
+        }
+
+        let ttl: TimeInterval = isRunning ? 150.0 : 360.0
+        if let cached = GenericWebSnapshotCache.shared.get(for: agentID, maxAge: ttl, isWorking: isRunning) {
+            return cached
         }
 
         guard let url = agentID.webLoginURL, !agentID.cookieDomainSuffixes.isEmpty else {
@@ -28,10 +86,18 @@ public struct GenericWebUsageProvider: UsageProvider {
 
         let script = """
         (function() {
-          const text = document.body ? document.body.innerText : '';
           const href = location.href || '';
           const isLoginRedirect = /\\/(login|signin|sign-in|sso|oauth|auth|passport)/i.test(href);
           if (isLoginRedirect) return JSON.stringify({ loggedIn: false, isLoginRedirect: true, href });
+
+          // Strip user chat messages, code blocks, and markdown articles so conversational text is NEVER mistaken for account quota!
+          let text = '';
+          if (document.body) {
+            const clone = document.body.cloneNode(true);
+            const noisy = clone.querySelectorAll('script, style, noscript, pre, code, textarea, [data-message-author-role], [data-testid*="message"], [data-testid*="conversation"], .prose, .markdown-body');
+            for (const el of noisy) el.remove();
+            text = clone.innerText || clone.textContent || '';
+          }
 
           let remaining = null;
           let subtitle = null;
@@ -56,6 +122,7 @@ public struct GenericWebUsageProvider: UsageProvider {
           const remFrac = text.match(/(?:remaining|left|剩余|可用)[^\\d]{0,16}([\\d,]+(?:\\.\\d+)?)\\s*\\/\\s*([\\d,]+(?:\\.\\d+)?)/i);
           const genericFrac = text.match(/(?:credits?|requests?|prompts?|points?|quota|tokens?|积分|额度|用量|配额|算力|次数)[\\s\\S]{0,36}?([\\d,]+(?:\\.\\d+)?)\\s*\\/\\s*([\\d,]+(?:\\.\\d+)?)/i);
           const cashBal = text.match(/(?:账户余额|可用余额|现金余额|Available\\s*Balance|Balance)[\\s:：]{0,12}([¥￥$])\\s*([\\d,]+(?:\\.\\d+)?)/i);
+          const cashBalSuffix = text.match(/(?:账户余额|可用余额|现金余额|Available\\s*Balance|Balance)[\\s:：]{0,12}([\\d,]+(?:\\.\\d+)?)\\s*(CNY|RMB|USD|元)/i);
 
           const toNum = (s) => parseFloat(String(s).replace(/,/g, ''));
 
@@ -86,9 +153,16 @@ public struct GenericWebUsageProvider: UsageProvider {
               remaining = Math.max(0, Math.min(100, (isUsed ? (1 - a / tot) : (a / tot)) * 100));
               subtitle = `${Math.round(a)} / ${Math.round(tot)}`;
             }
-          } else if (cashBal) {
-            const sym = cashBal[1] === '￥' ? '¥' : cashBal[1];
-            const val = toNum(cashBal[2]);
+          } else if (cashBal || cashBalSuffix) {
+            let sym = '¥';
+            let val = 0;
+            if (cashBal) {
+              sym = cashBal[1] === '￥' ? '¥' : cashBal[1];
+              val = toNum(cashBal[2]);
+            } else if (cashBalSuffix) {
+              sym = cashBalSuffix[2].toUpperCase() === 'USD' ? '$' : '¥';
+              val = toNum(cashBalSuffix[1]);
+            }
             const half = sym === '$' ? 3.0 : 15.0;
             remaining = val > 0 ? Math.max(4, Math.min(98, (val / (val + half)) * 100)) : 0;
             balanceDisplay = `${sym}${val.toFixed(2)}`;
@@ -162,7 +236,7 @@ public struct GenericWebUsageProvider: UsageProvider {
             let plan = (result["planTier"] as? String)?.nilIfEmpty
             let balDisp = (result["balanceDisplay"] as? String)?.nilIfEmpty
             let dockBal = (result["dockBalanceShort"] as? String)?.nilIfEmpty
-            return QuotaSnapshot(
+            let snap = QuotaSnapshot(
                 agentID: agentID,
                 remainingPercent: remaining,
                 balanceDisplay: balDisp,
@@ -176,6 +250,8 @@ public struct GenericWebUsageProvider: UsageProvider {
                 isWorking: isRunning,
                 sourceDescription: "\(agentID.shortName) Web"
             )
+            GenericWebSnapshotCache.shared.set(snap, for: agentID)
+            return snap
         }
     }
 }

@@ -27,7 +27,14 @@ public struct GrokBotProvider: UsageProvider {
 
         if isSameUnifiedAccount, cursorAuth.accessToken != nil {
             let liveCursor = await CursorProvider().fetchSnapshot()
-            if let liveRem = liveCursor.remainingPercent {
+            // Double-verify reset epoch agreement: if both timestamps exist and differ by >5 min, they are separate billing buckets!
+            let epochsAgree: Bool = {
+                if let r1 = localCache?.resetsAt, let r2 = liveCursor.resetsAt {
+                    return abs(r1.timeIntervalSince(r2)) <= 300.0
+                }
+                return true
+            }()
+            if epochsAgree, let liveRem = liveCursor.remainingPercent {
                 let grokWindows = liveCursor.windows.map { win in
                     QuotaWindow(
                         label: win.label

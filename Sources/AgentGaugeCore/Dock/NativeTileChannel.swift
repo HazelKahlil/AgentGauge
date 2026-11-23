@@ -18,7 +18,7 @@ public final class NativeTileChannel {
     }
 
     private var activeTiles: [AgentID: ActiveTile] = [:]
-    private var nonRunningCheckedAt: [AgentID: TimeInterval] = [:]
+    private var nonRunningCheckedAt: [String: TimeInterval] = [:]
     private var cleanupProcess: Process?
     private var cleanupPipe: Pipe?
     private var consecutiveFailures: Int = 0
@@ -54,27 +54,33 @@ public final class NativeTileChannel {
     public func draw(
         agentID: AgentID,
         snapshot: QuotaSnapshot,
-        params: IconRenderParams
+        params: IconRenderParams,
+        preferredBundleID: String? = nil
     ) -> Bool {
         let nowTs = Date().timeIntervalSinceReferenceDate
         guard Date() >= circuitCooldownUntil else { return false }
 
-        // Avoid 30Hz LaunchServices queries when hovering a closed Dock icon that still has valid cloud quota
+        let missKey = preferredBundleID ?? agentID.rawValue
+
+        // Avoid 60Hz LaunchServices queries when hovering a closed Dock icon that still has valid cloud quota
         if activeTiles[agentID] == nil,
-           let lastMiss = nonRunningCheckedAt[agentID],
+           let lastMiss = nonRunningCheckedAt[missKey],
            (nowTs - lastMiss) < 1.2 {
             return false
         }
 
-        guard let runningApp = agentID.bundleIdentifiers.lazy
+        // Strict Dock-variant isolation: when hovering a specific bundle ID on the Dock, ONLY target that exact running bundle ID
+        // (never light up an unhovered sibling variant such as Zed vs Zed Preview!).
+        let targetBundleIDs: [String] = preferredBundleID.map { [$0] } ?? agentID.bundleIdentifiers
+        guard let runningApp = targetBundleIDs.lazy
                 .compactMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0).first })
                 .first,
               let appURL = runningApp.bundleURL else {
-            nonRunningCheckedAt[agentID] = nowTs
+            nonRunningCheckedAt[missKey] = nowTs
             release(agentID: agentID)
             return false
         }
-        nonRunningCheckedAt.removeValue(forKey: agentID)
+        nonRunningCheckedAt.removeValue(forKey: missKey)
 
         let pid = runningApp.processIdentifier
         var psn: NativeDockPSN

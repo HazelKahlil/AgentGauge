@@ -12,6 +12,7 @@ public final class OverlayManager {
         var targetTilt: CGFloat = 0
         var isActiveOnDock: Bool = false
         var lastDrawTime: TimeInterval = 0
+        var lastBundleID: String? = nil
     }
 
     private let locator = DockLocator()
@@ -519,7 +520,7 @@ public final class OverlayManager {
                 guard cursorDrift <= 38 else { return }
 
                 // Seed uncached newly launched/added Dock apps without overwriting baseline unmagnified rects
-                if !self.cachedDockTiles.contains(where: { $0.agentID == hm.agentID }) {
+                if !self.cachedDockTiles.contains(where: { $0.bundleID == hm.bundleID }) {
                     self.cachedDockTiles.append(CachedDockTile(
                         agentID: hm.agentID,
                         bundleID: hm.bundleID,
@@ -529,7 +530,7 @@ public final class OverlayManager {
                     ))
                 }
 
-                if let cur = self.activeMatch, cur.agentID != hm.agentID {
+                if let cur = self.activeMatch, (cur.agentID != hm.agentID || cur.bundleID != hm.bundleID) {
                     // Schmitt-trigger hysteresis: require clear inward penetration into neighbor before switching
                     guard Self.shouldCommitNeighborSwitch(
                         cursor: hm.cgCursor,
@@ -633,6 +634,7 @@ public final class OverlayManager {
                 }
                 st.isHovered = true
                 st.targetTilt = 0
+                st.lastBundleID = hm.bundleID
             } else {
                 st.isHovered = false
                 st.targetTilt = 0
@@ -693,6 +695,11 @@ public final class OverlayManager {
             badgeScale: CGFloat(badgeScale),
             badgeOpacity: CGFloat(badgeOpacity)
         )
-        nativeChannel.draw(agentID: id, snapshot: snap, params: params)
+        nativeChannel.draw(
+            agentID: id,
+            snapshot: snap,
+            params: params,
+            preferredBundleID: st.lastBundleID
+        )
     }
 }

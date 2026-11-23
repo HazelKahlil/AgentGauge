@@ -92,10 +92,15 @@ struct DiagProbe {
                 precondition(abs(m - min(g, a)) < 0.001, "minBottleneck must equal min(Gemini, Anthropic)")
             }
 
-            // 3. Standalone GeminiProvider isolation (must NEVER include Anthropic windows!)
+            // 3. Standalone GeminiProvider & GrokDesktopProvider product isolation (must NEVER leak developer coding pools!)
             let gem = await GeminiProvider().fetchSnapshot()
             print("[INFO] GeminiProvider:", gem.formattedCardValue(showPercentageSign: true), "| src:", gem.sourceDescription, "| wins:", gem.windows.map(\.label))
             precondition(!gem.windows.contains(where: { $0.label.localizedCaseInsensitiveContains("anthropic") }), "GeminiProvider must never leak Anthropic pool")
+            precondition(gem.sourceDescription != "Google AI 订阅池 (Gemini)", "GeminiProvider must never borrow Antigravity developer pool")
+
+            let gk = await GrokDesktopProvider().fetchSnapshot()
+            print("[INFO] GrokDesktopProvider:", gk.formattedCardValue(showPercentageSign: true), "| src:", gk.sourceDescription)
+            precondition(!gk.sourceDescription.contains("Grok Bot"), "GrokDesktopProvider must never borrow Grok Bot coding pool")
 
             // 4. Codex, Cursor & GrokBot verification
             let cx = await CodexProvider().fetchSnapshot()
