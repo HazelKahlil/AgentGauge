@@ -333,7 +333,7 @@ public struct CodexProvider: UsageProvider {
                 }
 
                 let requests: [[String: Any]] = [
-                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.3.1"]]],
+                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.3.2"]]],
                     ["jsonrpc": "2.0", "method": "initialized", "params": [:]],
                     ["jsonrpc": "2.0", "id": 2, "method": "account/read", "params": [:]],
                     ["jsonrpc": "2.0", "id": 3, "method": "account/rateLimits/read", "params": [:]]

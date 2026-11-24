@@ -1287,7 +1287,30 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.3.1", id: "v1-3-1", date: "2026-11-23", latest: true,
+      ver: "v1.3.2", id: "v1-3-2", date: "2026-11-24", latest: true,
+      title: [
+        "WYSIWYG Dock water color, real Claude / GPT model labels & AI Ultra 5x/20x tiers",
+        "Dock 水色所见即所得、Antigravity Claude / GPT 真实模型名与 AI Ultra 5x/20x 档位",
+      ],
+      summary: [
+        "Keeps Dock liquid water 100% faithful to your selected custom or brand color at all quota levels, labels Antigravity's third-party model pool accurately as Claude / GPT, adds Google AI Ultra 5x / 20x badges, and fixes 1970 sentinel reset timestamps.",
+        "Dock 图标水波不再因低水位强制变黄/变红，所选颜色 100% 所见即所得；Antigravity 第三方池更正为实际模型名 Claude / GPT，补齐 Google AI Ultra 5x / 20x 档位徽章，并修复未消耗池的 1970 哨兵时间戳误报。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>100% WYSIWYG Dock Water Color</b>: Removed hardcoded <code>&le;30%</code> amber and <code>&le;15%</code> red tint overrides inside <code>NativeIconRenderer</code> so Dock water and badges always preserve your chosen color, while keeping low-quota amber/red bars cleanly inside hover cards, menu bar rows, and Settings cards.",
+            "<b>Dock 水色 100% 所见即所得</b>：移除 <code>NativeIconRenderer</code> 在 <code>&le;30%</code> / <code>&le;15%</code> 下强制覆盖水体和徽标颜色的逻辑，无论余量多少均忠实呈现所选颜色/主题色，低额度变橙/红提醒统一保留在悬停与面板进度条上。",
+          ],
+          [
+            "<b><code>Claude / GPT</code> Model Pool Naming, <code>AI Ultra · 5x / 20x</code> Badges &amp; Epoch Sentinel Fix</b>: Replaced vendor label <code>Anthropic</code> with actual model family <code>Claude / GPT</code> across Antigravity windows and switchers, added <code>AI Ultra · 5x</code> / <code>20x</code> pill &amp; subtitle support, and filtered Unix epoch <code>1970-01-01</code> sentinels on untouched <code>100%</code> pools so they honestly show <code>未消耗</code>.",
+            "<b>Antigravity <code>Claude / GPT</code> 真实模型命名、<code>AI Ultra · 5x / 20x</code> 档位与哨兵时间修复</b>：将第三方池由厂商名「Anthropic」更正为实际模型名 <code>Claude / GPT</code>，新增 <code>AI Ultra · 5x / 20x</code> 徽章与一键标注，并过滤未消耗池返回的 <code>1970-01-01</code> 哨兵时间。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.3.1", id: "v1-3-1", date: "2026-11-23",
       title: [
         "Cross-product quota boundary isolation (Gemini.app vs Antigravity, Grok.app vs Grok Bot) & anti-noise scraping",
         "全目录跨产品独立额度池硬隔离（Gemini.app / Antigravity、Grok.app / Grok Bot）与防误采校准",

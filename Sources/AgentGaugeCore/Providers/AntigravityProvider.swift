@@ -11,7 +11,7 @@ public enum AntigravityModelPool: String, Sendable {
     public var displayTitle: String {
         switch self {
         case .gemini:    return "Gemini"
-        case .anthropic: return "Anthropic"
+        case .anthropic: return "Claude / GPT"
         case .other:     return "其他模型"
         }
     }
@@ -168,14 +168,32 @@ public struct AntigravityProvider: UsageProvider {
         return .autoActiveModel
     }
 
+    public static func currentSavedUltraMultiplier() -> AntigravityUltraMultiplier {
+        if let raw = UserDefaults.standard.string(forKey: "AgentGauge.antigravityUltraMultiplier"),
+           let tier = AntigravityUltraMultiplier(rawValue: raw) {
+            return tier
+        }
+        return .auto
+    }
+
     /// Re-evaluates cached Antigravity dual-pool buckets in <0.5ms without spawning `agy` CLI.
-    /// Used when user switches models in Antigravity Desktop or toggles `AntigravityPoolFocus` in Settings.
-    public static func reevaluateFromCache(poolFocus: AntigravityPoolFocus? = nil) -> QuotaSnapshot? {
+    /// Used when user switches models in Antigravity Desktop or toggles pool/tier settings.
+    public static func reevaluateFromCache(
+        poolFocus: AntigravityPoolFocus? = nil,
+        ultraMultiplier: AntigravityUltraMultiplier? = nil
+    ) -> QuotaSnapshot? {
         guard let payload = AntigravityEndpointCache.shared.peekUnexpiredPayload() else { return nil }
         let focus = poolFocus ?? currentSavedPoolFocus()
+        let mult = ultraMultiplier ?? currentSavedUltraMultiplier()
         let isWorking = checkIsWorking()
         let desktopPool = (focus == .autoActiveModel) ? detectActiveDesktopPool() : nil
-        return buildSnapshot(from: payload, poolFocus: focus, detectedDesktopPool: desktopPool, isWorking: isWorking)
+        return buildSnapshot(
+            from: payload,
+            poolFocus: focus,
+            ultraMultiplier: mult,
+            detectedDesktopPool: desktopPool,
+            isWorking: isWorking
+        )
     }
 
     public func fetchSnapshot() async -> QuotaSnapshot {
@@ -184,10 +202,11 @@ public struct AntigravityProvider: UsageProvider {
             !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.antigravity").isEmpty
         }
         let focus = Self.currentSavedPoolFocus()
+        let mult = Self.currentSavedUltraMultiplier()
         let desktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
 
         if let recent = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAppRunning, isWorking: isWorking),
-           let snap = Self.buildSnapshot(from: recent, poolFocus: focus, detectedDesktopPool: desktopPool, isWorking: isWorking) {
+           let snap = Self.buildSnapshot(from: recent, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: desktopPool, isWorking: isWorking) {
             return snap
         }
 
@@ -196,7 +215,7 @@ public struct AntigravityProvider: UsageProvider {
         }) {
             AntigravityEndpointCache.shared.setPayload(freshPayload)
             let refreshedDesktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
-            if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
+            if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
                 return snap
             }
         }
@@ -456,7 +475,7 @@ public struct AntigravityProvider: UsageProvider {
 
             let groupName: String = switch pool {
             case .gemini:    "Gemini"
-            case .anthropic: "Anthropic"
+            case .anthropic: "Claude / GPT"
             case .other:     key
             }
 
@@ -468,11 +487,13 @@ public struct AntigravityProvider: UsageProvider {
                 "限额"
             }
 
-            // Rolling 5h window honesty: when 100% untouched, `agy` returns `now + 5h` rolling horizon (17999s).
-            // Never mislead the user with a perpetual "4h 59m" timer when nothing has been consumed!
+            // Untouched window honesty:
+            // - Rolling 5h window at 100% returns a perpetual `now + 5h` horizon;
+            // - Untouched 3P weekly/5h windows return Unix epoch sentinel (`1970-01-01T00:00:00Z` -> `rawResetDate == nil`).
+            // Never mislead with "4h 59m" or "即将重置" when 100% quota is untouched!
             let effectiveResetDate: Date?
             let effectiveResetText: String?
-            if is5h && fraction >= 0.9995 {
+            if fraction >= 0.9995 && (is5h || rawResetDate == nil) {
                 effectiveResetDate = nil
                 effectiveResetText = "未消耗"
             } else {
@@ -505,6 +526,7 @@ public struct AntigravityProvider: UsageProvider {
     static func buildSnapshot(
         from payload: CachedAGYPayload,
         poolFocus: AntigravityPoolFocus,
+        ultraMultiplier: AntigravityUltraMultiplier = .auto,
         detectedDesktopPool: AntigravityModelPool?,
         isWorking: Bool
     ) -> QuotaSnapshot? {
@@ -590,18 +612,20 @@ public struct AntigravityProvider: UsageProvider {
                 case .autoActiveModel: "跟随 \(activePool.displayTitle)"
                 case .minBottleneck:   "双池最低"
                 case .geminiOnly:      "固定 Gemini"
-                case .anthropicOnly:   "固定 Anthropic"
+                case .anthropicOnly:   "固定 Claude / GPT"
                 }
-                return "\(modePrefix) · Gemini \(gInt)% / Anthropic \(aInt)%"
+                return "\(modePrefix) · Gemini \(gInt)% / Claude·GPT \(aInt)%"
             }
             return nil
         }()
+
+        let resolvedPlanTier = applyUltraMultiplier(payload.planTier, override: ultraMultiplier)
 
         return QuotaSnapshot(
             agentID: .antigravity,
             remainingPercent: primaryBucket.percent,
             accountEmail: payload.email,
-            planTier: payload.planTier,
+            planTier: resolvedPlanTier,
             primaryLabel: primaryBucket.label,
             resetsAt: primaryBucket.resetsAt,
             resetText: primaryBucket.resetText,
@@ -808,8 +832,12 @@ public struct AntigravityProvider: UsageProvider {
     private static func normalizeGooglePlanTier(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
-        if lower == "ultra" || lower == "ai ultra" || lower == "google ai ultra" {
-            return "Google AI Ultra"
+        if lower.contains("ultra") {
+            if lower.contains("20x") { return "Google AI Ultra (20x)" }
+            if lower.contains("5x")  { return "Google AI Ultra (5x)" }
+            if lower == "ultra" || lower == "ai ultra" || lower == "google ai ultra" {
+                return "Google AI Ultra"
+            }
         }
         if lower == "pro" || lower == "ai pro" || lower == "google ai pro" {
             return "Google AI Pro"
@@ -817,17 +845,37 @@ public struct AntigravityProvider: UsageProvider {
         return trimmed
     }
 
+    private static func applyUltraMultiplier(_ tier: String?, override: AntigravityUltraMultiplier) -> String? {
+        guard let tier, !tier.isEmpty else { return nil }
+        let lower = tier.lowercased()
+        guard lower.contains("google ai ultra") else { return tier }
+        // Keep explicit API-reported multiplier if Google ever includes 5x/20x directly, unless user chose a specific override
+        switch override {
+        case .auto:
+            return tier
+        case .x5:
+            return "Google AI Ultra (5x)"
+        case .x20:
+            return "Google AI Ultra (20x)"
+        }
+    }
+
     private static func parseISODate(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
+        let minValidEpoch: TimeInterval = 946_684_800 // 2000-01-01T00:00:00Z; filters out 1970-01-01 unset sentinels!
         let fFrac = ISO8601DateFormatter()
         fFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = fFrac.date(from: raw) { return d }
+        if let d = fFrac.date(from: raw) {
+            return d.timeIntervalSince1970 >= minValidEpoch ? d : nil
+        }
 
         let fStd = ISO8601DateFormatter()
         fStd.formatOptions = [.withInternetDateTime]
-        if let d = fStd.date(from: raw) { return d }
+        if let d = fStd.date(from: raw) {
+            return d.timeIntervalSince1970 >= minValidEpoch ? d : nil
+        }
 
-        if let secs = Double(raw) {
+        if let secs = Double(raw), secs >= minValidEpoch {
             return Date(timeIntervalSince1970: secs)
         }
         return nil

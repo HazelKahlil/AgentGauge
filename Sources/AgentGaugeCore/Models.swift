@@ -520,7 +520,11 @@ public struct QuotaSnapshot: Sendable, Equatable {
     public var compactPlanBadge: String? {
         guard let raw = planTier, !raw.isEmpty else { return nil }
         let lower = raw.lowercased()
-        if lower.contains("google ai ultra") { return "AI Ultra" }
+        if lower.contains("google ai ultra") {
+            if lower.contains("20x") { return "AI Ultra · 20x" }
+            if lower.contains("5x")  { return "AI Ultra · 5x" }
+            return "AI Ultra"
+        }
         if lower.contains("google ai pro")   { return "AI Pro" }
         if lower.contains("pro lite") && lower.contains("5x") { return "Pro Lite · 5x" }
         if lower.contains("chatgpt pro") && lower.contains("20x") { return "Pro · 20x" }
@@ -667,7 +671,7 @@ public enum TooltipDetailMode: String, CaseIterable, Codable, Sendable, Identifi
 }
 
 /// Controls which isolated quota pool drives Antigravity's primary Dock water level & hero percentage.
-/// Antigravity enforces separate 5h + Weekly pools for Google Gemini models vs Anthropic (Claude) / 3P models.
+/// Antigravity enforces separate 5h + Weekly pools for Google Gemini models vs 3P (Claude / GPT) models.
 public enum AntigravityPoolFocus: String, CaseIterable, Codable, Sendable, Identifiable {
     case autoActiveModel = "autoActiveModel"
     case minBottleneck = "minBottleneck"
@@ -681,20 +685,37 @@ public enum AntigravityPoolFocus: String, CaseIterable, Codable, Sendable, Ident
         case .autoActiveModel: return "跟随模型"
         case .minBottleneck:   return "双池最低"
         case .geminiOnly:      return "Gemini"
-        case .anthropicOnly:   return "Anthropic"
+        case .anthropicOnly:   return "Claude/GPT"
         }
     }
 
     public var helpDescription: String {
         switch self {
         case .autoActiveModel:
-            return "自动识别 Antigravity 最近一次对话所用的模型池（Gemini 或 Anthropic Claude），切换模型即刻同步水位"
+            return "自动识别 Antigravity 最近一次对话所用的模型池（Gemini 或 Claude / GPT），切换模型即刻同步水位"
         case .minBottleneck:
-            return "始终显示 Gemini 池与 Anthropic 池中余量最低的木桶瓶颈，任一池见底立即预警"
+            return "始终显示 Gemini 池与 Claude / GPT 池中余量最低的木桶瓶颈，任一池见底立即预警"
         case .geminiOnly:
             return "固定在 Dock 图标主读数展示 Gemini 模型池余量"
         case .anthropicOnly:
-            return "固定在 Dock 图标主读数展示 Anthropic (Claude) 模型池余量"
+            return "固定在 Dock 图标主读数展示 Claude / GPT 模型池余量"
+        }
+    }
+}
+
+/// Optional multiplier suffix (`5x` / `20x`) for Google AI Ultra accounts when `agy` CLI reports generic `"Google AI Ultra"`.
+public enum AntigravityUltraMultiplier: String, CaseIterable, Codable, Sendable, Identifiable {
+    case auto = "auto"
+    case x5 = "5x"
+    case x20 = "20x"
+
+    public var id: String { rawValue }
+
+    public var shortTitle: String {
+        switch self {
+        case .auto: return "自动"
+        case .x5:   return "5x"
+        case .x20:  return "20x"
         }
     }
 }

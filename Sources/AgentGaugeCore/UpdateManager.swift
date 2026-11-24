@@ -109,14 +109,14 @@ public final class UpdateManager: ObservableObject {
     private var isPerformingInstall = false
 
     public var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3.1"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3.2"
     }
 
     public var currentBuild: Int {
         if let raw = Bundle.main.infoDictionary?["CFBundleVersion"] as? String, let n = Int(raw) {
             return n
         }
-        return 131
+        return 132
     }
 
     private init() {

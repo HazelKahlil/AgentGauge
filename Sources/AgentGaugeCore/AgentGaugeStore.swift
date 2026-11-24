@@ -70,8 +70,26 @@ public final class AgentGaugeStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(antigravityPoolFocus.rawValue, forKey: "AgentGauge.antigravityPoolFocus")
             let focus = antigravityPoolFocus
+            let mult = antigravityUltraMultiplier
             Task.detached(priority: .userInitiated) {
-                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus) else { return }
+                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus, ultraMultiplier: mult) else { return }
+                await MainActor.run {
+                    let store = AgentGaugeStore.shared
+                    guard !store.promoFrozen else { return }
+                    store.snapshots[.antigravity] = updated
+                    store.overlayManager.updateSnapshots(store.snapshots)
+                }
+            }
+        }
+    }
+
+    @Published public var antigravityUltraMultiplier: AntigravityUltraMultiplier {
+        didSet {
+            UserDefaults.standard.set(antigravityUltraMultiplier.rawValue, forKey: "AgentGauge.antigravityUltraMultiplier")
+            let focus = antigravityPoolFocus
+            let mult = antigravityUltraMultiplier
+            Task.detached(priority: .userInitiated) {
+                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus, ultraMultiplier: mult) else { return }
                 await MainActor.run {
                     let store = AgentGaugeStore.shared
                     guard !store.promoFrozen else { return }
@@ -287,6 +305,13 @@ public final class AgentGaugeStore: ObservableObject {
             self.antigravityPoolFocus = .autoActiveModel
         }
 
+        if let multRaw = defaults.string(forKey: "AgentGauge.antigravityUltraMultiplier"),
+           let multMode = AntigravityUltraMultiplier(rawValue: multRaw) {
+            self.antigravityUltraMultiplier = multMode
+        } else {
+            self.antigravityUltraMultiplier = .auto
+        }
+
         if !defaults.bool(forKey: "AgentGauge.migratedSmartInvert.v1") {
             defaults.set(true, forKey: "AgentGauge.migratedSmartInvert.v1")
             defaults.set(NumberColorMode.smartInvert.rawValue, forKey: "AgentGauge.numberColorMode")
@@ -351,7 +376,7 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.3.1 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        AppLogger.shared.log("System", "AgentGauge v1.3.2 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
         overlayManager.onWakeNearDock = { [weak self] in
             self?.syncFastLocalStateOnUIWake()
         }

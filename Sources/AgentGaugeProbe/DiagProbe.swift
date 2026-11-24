@@ -82,20 +82,32 @@ struct DiagProbe {
             let agGem = AntigravityProvider.reevaluateFromCache(poolFocus: .geminiOnly)
             let agAnt = AntigravityProvider.reevaluateFromCache(poolFocus: .anthropicOnly)
             let agMin = AntigravityProvider.reevaluateFromCache(poolFocus: .minBottleneck)
+            let agU5  = AntigravityProvider.reevaluateFromCache(poolFocus: .autoActiveModel, ultraMultiplier: .x5)
+            let agU20 = AntigravityProvider.reevaluateFromCache(poolFocus: .autoActiveModel, ultraMultiplier: .x20)
             let reMs = Date().timeIntervalSince(tRe) * 1000.0
-            print(String(format: "[PASS] 3x cached pool re-evaluations took %.2fms | Gemini=%@ | Anthropic=%@ | MinBottleneck=%@",
+            print(String(format: "[PASS] Cached pool & tier re-evaluations took %.2fms | Gemini=%@ | Claude/GPT=%@ | MinBottleneck=%@ | U5=%@ | U20=%@",
                          reMs,
                          agGem?.formattedCardValue(showPercentageSign: true) ?? "nil",
                          agAnt?.formattedCardValue(showPercentageSign: true) ?? "nil",
-                         agMin?.formattedCardValue(showPercentageSign: true) ?? "nil"))
+                         agMin?.formattedCardValue(showPercentageSign: true) ?? "nil",
+                         agU5?.compactPlanBadge ?? "nil",
+                         agU20?.compactPlanBadge ?? "nil"))
+            precondition(!agAuto.windows.contains(where: { $0.label.localizedCaseInsensitiveContains("anthropic") }), "Antigravity windows must display real model names (Claude / GPT), never vendor name Anthropic")
+            for w in agAuto.windows where w.remainingPercent >= 99.95 {
+                precondition(w.formattedCountdown() != "即将重置", "Untouched 100% bucket must never show 即将重置 (1970 epoch sentinel bug)")
+            }
+            if agAuto.planTier?.lowercased().contains("ultra") == true {
+                precondition(agU5?.compactPlanBadge == "AI Ultra · 5x", "Ultra 5x compact badge mismatch")
+                precondition(agU20?.compactPlanBadge == "AI Ultra · 20x", "Ultra 20x compact badge mismatch")
+            }
             if let g = agGem?.remainingPercent, let a = agAnt?.remainingPercent, let m = agMin?.remainingPercent {
-                precondition(abs(m - min(g, a)) < 0.001, "minBottleneck must equal min(Gemini, Anthropic)")
+                precondition(abs(m - min(g, a)) < 0.001, "minBottleneck must equal min(Gemini, Claude/GPT)")
             }
 
             // 3. Standalone GeminiProvider & GrokDesktopProvider product isolation (must NEVER leak developer coding pools!)
             let gem = await GeminiProvider().fetchSnapshot()
             print("[INFO] GeminiProvider:", gem.formattedCardValue(showPercentageSign: true), "| src:", gem.sourceDescription, "| wins:", gem.windows.map(\.label))
-            precondition(!gem.windows.contains(where: { $0.label.localizedCaseInsensitiveContains("anthropic") }), "GeminiProvider must never leak Anthropic pool")
+            precondition(!gem.windows.contains(where: { $0.label.localizedCaseInsensitiveContains("anthropic") || $0.label.localizedCaseInsensitiveContains("claude") }), "GeminiProvider must never leak 3P Claude/GPT pool")
             precondition(gem.sourceDescription != "Google AI 订阅池 (Gemini)", "GeminiProvider must never borrow Antigravity developer pool")
 
             let gk = await GrokDesktopProvider().fetchSnapshot()

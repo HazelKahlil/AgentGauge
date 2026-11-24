@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.2] - 2026-11-24
+
+### Fixed / 修复
+
+- **WYSIWYG Dock Water Color (No Forced Amber/Red Override on Dock Icons)**: Removed the hardcoded `<= 30%` amber and `<= 15%` red water-tint overrides inside `NativeIconRenderer` so Dock liquid water and icon badges always stay 100% faithful to your selected custom color or app brand theme color regardless of quota level, while keeping `<= 30%` amber and `<= 15%` red warning bars cleanly inside hover cards, menu bar rows, and Settings cards.  
+  **修复低水位强制改变 Dock 水色的问题（颜色选择器 100% 所见即所得）**：移除 `NativeIconRenderer` 在剩余额度 `<= 30%` / `<= 15%` 时强制将整团水体和图标徽标覆盖为黄/红色的逻辑；现在无论余量高低，Dock 水波始终忠实呈现你选择的颜色或应用主题色，低额度变橙/变红预警统一保留在悬停卡片、菜单栏与设置进度条上。
+- **Antigravity Real Model Pool Naming (`Claude / GPT`), `Google AI Ultra (5x / 20x)` Tier Badges & `1970-01-01` Epoch Sentinel Fix**: Renamed Antigravity's third-party model pool from the vendor name `"Anthropic"` to its actual model family **`Claude / GPT`** (`Claude / GPT · 周限额`, `Claude / GPT · 5h 限额`, switcher pill `Claude/GPT`), added full `Google AI Ultra (5x)` / `Google AI Ultra (20x)` compact badge (`AI Ultra · 5x` / `AI Ultra · 20x`) and Settings detail tier switcher support (matching `ChatGPT Pro Lite (5x)`), and filtered out Unix epoch `1970-01-01T00:00:00Z` sentinels emitted by `agy` on untouched `100%` weekly/5h pools so they honestly read `未消耗` instead of falsely displaying `即将重置` and bypassing cache.  
+  **修正 Antigravity 模型池命名（`Claude / GPT`）、支持 `AI Ultra · 5x / 20x` 档位与 `1970` 时间戳修复**：将 Antigravity 第三方模型池由厂商名「Anthropic」更正为实际模型名 **`Claude / GPT`**；新增 `Google AI Ultra (5x / 20x)` 档位徽章（`AI Ultra · 5x` / `AI Ultra · 20x`）与邮箱副标题完整展示（与 ChatGPT 保持一致，并支持在详情弹窗一键切换 `自动 / 5x / 20x`）；同时过滤 `agy` 对未消耗 `100%` 池返回的 `1970-01-01` 哨兵重置时间，消除误标「即将重置」与重复穿透缓存的问题。
+
+---
+
 ## [1.3.1] - 2026-11-23
 
 ### Fixed / 修复

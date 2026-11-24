@@ -407,6 +407,8 @@ struct MenuBarPopoverView: View {
                     Text(mode.shortTitle)
                         .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                         .frame(maxWidth: .infinity)
                         .frame(height: 20)
                         .background(

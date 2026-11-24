@@ -497,16 +497,8 @@ public final class NativeIconRenderer {
         // Signature optical refractive liquid water wave underneath ALL 11 styles
         let waterMode: Float = 1.0
 
-        // Alert-aware water tint on critical/low quota
-        let effectiveWaterNS: NSColor = if remaining <= 15 {
-            NSColor(srgbRed: 0.90, green: 0.25, blue: 0.22, alpha: 1.0)
-        } else if remaining <= 30 {
-            NSColor(srgbRed: 0.90, green: 0.54, blue: 0.12, alpha: 1.0)
-        } else {
-            waterColor
-        }
-
-        let tintVec = srgbVector(from: effectiveWaterNS)
+        // Always honor the selected custom water color or app brand theme color (100% WYSIWYG; low-quota warnings appear on card progress bars)
+        let tintVec = srgbVector(from: waterColor)
         let fSide = Float(dockTileSide)
         let phase = Float(abs(agentID.rawValue.hashValue % 100)) * 0.06
         var uniforms = ShaderUniforms(
@@ -719,7 +711,10 @@ public final class NativeIconRenderer {
                     .map(\.remainingPercent)
                     .min()
                 let antMin = snapshot.windows
-                    .filter { $0.label.localizedCaseInsensitiveContains("anthropic") || $0.label.localizedCaseInsensitiveContains("claude") }
+                    .filter {
+                        let l = $0.label.lowercased()
+                        return l.contains("claude") || l.contains("gpt") || l.contains("anthropic")
+                    }
                     .map(\.remainingPercent)
                     .min()
                 if let g = gemMin, let a = antMin {
@@ -752,7 +747,7 @@ public final class NativeIconRenderer {
         let hexKey = waterColor.srgbHexString
         let cdKey = countdownStr ?? "-"
         let darkKey = cached.isDark ? "D" : "L"
-        let key = "rgba-v9-\(darkKey)-\(params.badgeStyle.rawValue)-\(params.numberColorMode.rawValue)-\(remKey)-\(trk1Key)-\(secKey)-\(scKey)-\(opKey)-\(hexKey)-\(labelText)-\(cdKey)-\(side)-\(Int(bRect.minX))-\(Int(bRect.minY))"
+        let key = "rgba-v10-\(darkKey)-\(params.badgeStyle.rawValue)-\(params.numberColorMode.rawValue)-\(remKey)-\(trk1Key)-\(secKey)-\(scKey)-\(opKey)-\(hexKey)-\(labelText)-\(cdKey)-\(side)-\(Int(bRect.minX))-\(Int(bRect.minY))"
 
         if let hit = labelTexCache[key] {
             return hit
@@ -798,13 +793,11 @@ public final class NativeIconRenderer {
         let vividTheme = NSColor(hue: h, saturation: min(0.82, max(0.54, s * 1.25)), brightness: max(0.88, b), alpha: 1.0)
             .usingColorSpace(.sRGB) ?? baseSRGB
 
-        let accentRGB: (CGFloat, CGFloat, CGFloat) = if remaining <= 15 {
-            (1.0, 0.27, 0.23)   // Alert Coral #FF453A
-        } else if remaining <= 30 {
-            (1.0, 0.62, 0.04)   // Alert Amber #FF9F0A
-        } else {
-            (vividTheme.redComponent, vividTheme.greenComponent, vividTheme.blueComponent)
-        }
+        let accentRGB: (CGFloat, CGFloat, CGFloat) = (
+            vividTheme.redComponent,
+            vividTheme.greenComponent,
+            vividTheme.blueComponent
+        )
 
         let bandRGB: (CGFloat, CGFloat, CGFloat) = switch params.numberColorMode {
         case .smokeGray:
@@ -812,17 +805,11 @@ public final class NativeIconRenderer {
         case .obsidianBlack:
             (0.05, 0.06, 0.09)
         case .smartInvert, .adaptiveInk, .white:
-            if remaining <= 15 {
-                (0.55, 0.13, 0.11)
-            } else if remaining <= 30 {
-                (0.54, 0.31, 0.06)
-            } else {
-                (
-                    baseSRGB.redComponent * 0.44 + 0.05,
-                    baseSRGB.greenComponent * 0.44 + 0.07,
-                    baseSRGB.blueComponent * 0.44 + 0.10
-                )
-            }
+            (
+                baseSRGB.redComponent * 0.44 + 0.05,
+                baseSRGB.greenComponent * 0.44 + 0.07,
+                baseSRGB.blueComponent * 0.44 + 0.10
+            )
         }
 
         func cgColor(_ rgb: (CGFloat, CGFloat, CGFloat), _ alpha: CGFloat) -> CGColor {
@@ -1166,13 +1153,11 @@ public final class NativeIconRenderer {
             let y2 = hudRect.minY + hudH * 0.67
 
             // Track 1: Short session window (or Gemini pool on Antigravity)
-            let trk1RGB: (CGFloat, CGFloat, CGFloat) = if primaryTrackPct <= 15 {
-                (1.0, 0.27, 0.23)
-            } else if primaryTrackPct <= 30 {
-                (1.0, 0.62, 0.04)
-            } else {
-                (vividTheme.redComponent, vividTheme.greenComponent, vividTheme.blueComponent)
-            }
+            let trk1RGB: (CGFloat, CGFloat, CGFloat) = (
+                vividTheme.redComponent,
+                vividTheme.greenComponent,
+                vividTheme.blueComponent
+            )
             ctx.saveGState()
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y1 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)
@@ -1187,14 +1172,8 @@ public final class NativeIconRenderer {
             ctx.fillPath()
             ctx.restoreGState()
 
-            // Track 2: Weekly window (or Anthropic pool on Antigravity), with low-quota alert color!
-            let trk2RGB: (CGFloat, CGFloat, CGFloat) = if secondaryPct <= 15 {
-                (1.0, 0.27, 0.23)
-            } else if secondaryPct <= 30 {
-                (1.0, 0.62, 0.04)
-            } else {
-                (0.37, 0.92, 0.83)
-            }
+            // Track 2: Weekly window (or Anthropic pool on Antigravity)
+            let trk2RGB: (CGFloat, CGFloat, CGFloat) = (0.37, 0.92, 0.83)
             ctx.saveGState()
             ctx.beginPath()
             addPill(CGRect(x: trackX, y: y2 - trackH * 0.5, width: trackW, height: trackH), radius: trackH * 0.5)

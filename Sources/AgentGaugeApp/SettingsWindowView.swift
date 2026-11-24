@@ -1081,7 +1081,7 @@ private struct AgentBentoCard: View, Equatable {
                                     Capsule()
                                         .fill(Color.primary.opacity(0.09))
                                     Capsule()
-                                        .fill(rem <= 15 ? Color.red : accent)
+                                        .fill(rem <= 15 ? Color.red : (rem <= 30 ? Color.orange : accent))
                                         .frame(width: geo.size.width * pct)
                                 }
                             }
@@ -1187,6 +1187,10 @@ private struct AgentDetailPopover: View {
     let onRefresh: () -> Void
     let onLogin: () -> Void
 
+    private var liveSnap: QuotaSnapshot? {
+        store.snapshots[agentID] ?? snapshot
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
@@ -1201,11 +1205,11 @@ private struct AgentDetailPopover: View {
                     HStack(spacing: 5.5) {
                         Text(agentID.displayName)
                             .font(.system(size: 12.5, weight: .semibold))
-                        if let badge = snapshot?.compactPlanBadge {
+                        if let badge = liveSnap?.compactPlanBadge {
                             PlanTierBadgePill(text: badge, accentColor: waterColor, size: .regular)
                         }
                     }
-                    Text(snapshot?.sourceDescription ?? agentID.themeColorName)
+                    Text(liveSnap?.sourceDescription ?? agentID.themeColorName)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
@@ -1222,9 +1226,9 @@ private struct AgentDetailPopover: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(snapshot?.accountEmail ?? "未识别 / 未登录")
+                    Text(liveSnap?.accountEmail ?? "未识别 / 未登录")
                         .font(.system(size: 11, weight: .medium).monospacedDigit())
-                        .foregroundStyle(snapshot?.accountEmail != nil ? .primary : .secondary)
+                        .foregroundStyle(liveSnap?.accountEmail != nil ? .primary : .secondary)
                         .textSelection(.enabled)
                 }
 
@@ -1233,16 +1237,49 @@ private struct AgentDetailPopover: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(snapshot?.planTier ?? "—")
+                    Text(liveSnap?.planTier ?? "—")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(snapshot?.planTier != nil ? .primary : .secondary)
+                        .foregroundStyle(liveSnap?.planTier != nil ? .primary : .secondary)
                 }
             }
 
             if agentID == .antigravity {
+                if let tier = liveSnap?.planTier, tier.lowercased().contains("ultra") {
+                    HStack(spacing: 6) {
+                        Text("Ultra 档位")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        HStack(spacing: 2.5) {
+                            ForEach(AntigravityUltraMultiplier.allCases) { mult in
+                                let isSelected = (store.antigravityUltraMultiplier == mult)
+                                Button {
+                                    store.antigravityUltraMultiplier = mult
+                                } label: {
+                                    Text(mult.shortTitle)
+                                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                        .padding(.horizontal, 7)
+                                        .frame(height: 19)
+                                        .background(isSelected ? accent.opacity(0.18) : Color.clear, in: Capsule())
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(isSelected ? accent.opacity(0.40) : Color.clear, lineWidth: 0.7)
+                                        )
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .focusEffectDisabled()
+                            }
+                        }
+                        .padding(2)
+                        .background(Color.primary.opacity(0.055), in: Capsule())
+                    }
+                }
+
                 Divider().opacity(0.45)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("图标主读数池（Gemini 与 Anthropic 独立计费）")
+                    Text("图标主读数池（Gemini 与 Claude / GPT 独立计费）")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
 
@@ -1255,6 +1292,8 @@ private struct AgentDetailPopover: View {
                                 Text(mode.shortTitle)
                                     .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
                                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.78)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 20)
                                     .background(isSelected ? accent.opacity(0.18) : Color.clear, in: Capsule())
@@ -1274,7 +1313,7 @@ private struct AgentDetailPopover: View {
                 }
             }
 
-            if let wins = snapshot?.windows, !wins.isEmpty {
+            if let wins = liveSnap?.windows, !wins.isEmpty {
                 Divider().opacity(0.45)
                 VStack(alignment: .leading, spacing: 4.5) {
                     ForEach(Array(wins.prefix(6).enumerated()), id: \.offset) { _, win in
@@ -1377,15 +1416,6 @@ private struct AgentColorPopover: View {
         self.onColorChange = onColorChange
         self._draftColor = State(initialValue: waterColor)
     }
-
-    private static let curatedSwatches: [(String, String)] = [
-        ("#10A37F", "翡翠绿"),
-        ("#3B82F6", "宝石蓝"),
-        ("#7C5CFF", "棱镜紫"),
-        ("#06B6D4", "晴空青"),
-        ("#F97316", "琥珀橙"),
-        ("#EC4899", "珊瑚粉")
-    ]
 
     private var activeHex: String {
         draftColor.srgbHexString
@@ -1496,6 +1526,11 @@ private struct AgentColorPopover: View {
         }
         .padding(12)
         .frame(width: 210)
+        .onChange(of: waterColor) { _, newColor in
+            if !hasPendingCommit {
+                draftColor = newColor
+            }
+        }
         .onDisappear {
             if hasPendingCommit {
                 hasPendingCommit = false

@@ -11,8 +11,8 @@ if [ ! -d "${APP_PATH}" ]; then
   exit 1
 fi
 
-SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "1.3.1")
-BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "131")
+SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "1.3.2")
+BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "${APP_PATH}/Contents/Info.plist" 2>/dev/null || echo "132")
 DMG_NAME="AgentGauge-v${SHORT_VERSION}-macOS.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 EVERGREEN_DMG_PATH="${OUT_DIR}/AgentGauge-macOS.dmg"
@@ -71,7 +71,7 @@ ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${OTA_ZIP_PATH}"
 ZIP_SHA256=$(shasum -a 256 "${OTA_ZIP_PATH}" | awk '{print $1}')
 
 # 3. Cryptographically sign OTA Manifest (`Website/updates/latest.json`) with Ed25519 Private Key
-RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 全目录跨产品独立额度池硬隔离与防误采校准}"
+RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 所见即所得水色、Claude / GPT 真实模型命名与 AI Ultra 5x/20x 档位}"
 SHORT_VERSION="${SHORT_VERSION}" \
 BUILD_VERSION="${BUILD_VERSION}" \
 ZIP_SHA256="${ZIP_SHA256}" \
@@ -82,8 +82,8 @@ import CryptoKit
 import Foundation
 
 let env = ProcessInfo.processInfo.environment
-let version = env["SHORT_VERSION"] ?? "1.3.1"
-let build = Int(env["BUILD_VERSION"] ?? "131") ?? 131
+let version = env["SHORT_VERSION"] ?? "1.3.2"
+let build = Int(env["BUILD_VERSION"] ?? "132") ?? 132
 let sha256 = (env["ZIP_SHA256"] ?? "").lowercased()
 let title = env["RELEASE_TITLE"] ?? "v\(version)"
 let outPath = env["MANIFEST_OUT"]!
@@ -109,10 +109,10 @@ let manifest: [String: Any] = [
     "urgency": "recommended",
     "title": title,
     "notes": [
-        "解耦 Gemini.app 与 Antigravity 独立额度池，专属解析 Gemini「当前用量 + 每周限额」",
-        "解耦消费级 Grok.app 与编程智能体 Grok Bot 额度池，Grok Bot ↔ Cursor 增加重置周期一致性校验",
-        "网页额度采集自动剔除对话气泡与代码块防误判，校准千问百炼与 MiniMax 账单入口",
-        "多变体应用（Zed / Zed Preview、WorkBuddy / CodeBuddy 等）Dock 磁贴严格按当前悬停 Bundle ID 投递"
+        "Dock 水波与图标徽标 100% 忠实于所选颜色/主题色，低额度仅在悬停与面板进度条变橙/红提醒",
+        "Antigravity 第三方模型池正式显示实际模型名「Claude / GPT」，不再误标厂商名 Anthropic",
+        "支持 Google AI Ultra 5x / 20x 档位徽章与副标题展示（AI Ultra · 5x / 20x），可在详情卡片一键标注",
+        "修复 Antigravity 满血未消耗池返回 1970-01-01 哨兵时间导致误显示「即将重置」并穿透缓存的问题"
     ],
     "zipUrl": "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip",
     "fallbackZipUrl": "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",
