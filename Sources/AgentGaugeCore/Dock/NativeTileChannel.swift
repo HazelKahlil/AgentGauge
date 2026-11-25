@@ -1,6 +1,7 @@
 import AppKit
 import CNativeDockTile
 import CoreGraphics
+import Darwin
 import Foundation
 
 @MainActor
@@ -8,6 +9,7 @@ public final class NativeTileChannel {
     private struct ActiveTile {
         let pid: pid_t
         let psn: NativeDockPSN
+        let bundleID: String
         let appURL: URL
     }
 
@@ -69,35 +71,56 @@ public final class NativeTileChannel {
             return false
         }
 
-        // Strict Dock-variant isolation: when hovering a specific bundle ID on the Dock, ONLY target that exact running bundle ID
-        // (never light up an unhovered sibling variant such as Zed vs Zed Preview!).
-        let targetBundleIDs: [String] = preferredBundleID.map { [$0] } ?? agentID.bundleIdentifiers
-        guard let runningApp = targetBundleIDs.lazy
-                .compactMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0).first })
-                .first,
-              let appURL = runningApp.bundleURL else {
-            nonRunningCheckedAt[missKey] = nowTs
-            release(agentID: agentID)
-            return false
-        }
-        nonRunningCheckedAt.removeValue(forKey: missKey)
+        // Zero-IPC 30Hz fast path: if we already resolved this hovered tile's PID/PSN/bundleID and the process is still alive
+        // (`kill(pid, 0) == 0` takes <1µs), skip 30Hz LaunchServices queries on @MainActor!
+        let pid: pid_t
+        let psn: NativeDockPSN
+        let resolvedBundleID: String
+        let appURL: URL
 
-        let pid = runningApp.processIdentifier
-        var psn: NativeDockPSN
-
-        if let existing = activeTiles[agentID], existing.pid == pid {
+        if let existing = activeTiles[agentID],
+           (preferredBundleID == nil || existing.bundleID == preferredBundleID),
+           (Darwin.kill(existing.pid, 0) == 0 || errno == EPERM) {
+            pid = existing.pid
             psn = existing.psn
+            resolvedBundleID = existing.bundleID
+            appURL = existing.appURL
         } else {
-            if let old = activeTiles[agentID] {
+            // Strict Dock-variant isolation: when hovering a specific bundle ID on the Dock, ONLY target that exact running bundle ID
+            // (never light up an unhovered sibling variant such as Zed vs Zed Preview!).
+            let targetBundleIDs: [String] = preferredBundleID.map { [$0] } ?? agentID.bundleIdentifiers
+            guard let runningApp = targetBundleIDs.lazy
+                    .compactMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0).first })
+                    .first,
+                  let foundURL = runningApp.bundleURL else {
+                nonRunningCheckedAt[missKey] = nowTs
+                release(agentID: agentID)
+                return false
+            }
+            nonRunningCheckedAt.removeValue(forKey: missKey)
+
+            let foundPID = runningApp.processIdentifier
+            let foundBID = runningApp.bundleIdentifier ?? preferredBundleID ?? agentID.bundleIdentifier
+            if let old = activeTiles[agentID], old.pid != foundPID {
                 _ = native_dock_release_tile(old.psn)
                 sendWatchCmd(op: 2, psn: old.psn)
                 activeTiles.removeValue(forKey: agentID)
             }
-            var lookedUp = NativeDockPSN(high: 0, low: 0)
-            guard native_dock_get_psn_for_pid(pid, &lookedUp) else {
-                return false
+            if let existing = activeTiles[agentID], existing.pid == foundPID {
+                pid = existing.pid
+                psn = existing.psn
+                resolvedBundleID = existing.bundleID
+                appURL = existing.appURL
+            } else {
+                var lookedUp = NativeDockPSN(high: 0, low: 0)
+                guard native_dock_get_psn_for_pid(foundPID, &lookedUp) else {
+                    return false
+                }
+                pid = foundPID
+                psn = lookedUp
+                resolvedBundleID = foundBID
+                appURL = foundURL
             }
-            psn = lookedUp
         }
 
         var sendResult: Int32 = -1
@@ -114,7 +137,7 @@ public final class NativeTileChannel {
         if ok {
             consecutiveFailures = 0
             if activeTiles[agentID] == nil {
-                activeTiles[agentID] = ActiveTile(pid: pid, psn: psn, appURL: appURL)
+                activeTiles[agentID] = ActiveTile(pid: pid, psn: psn, bundleID: resolvedBundleID, appURL: appURL)
                 sendWatchCmd(op: 1, psn: psn)
             }
             return true

@@ -397,11 +397,14 @@ public struct CursorProvider: UsageProvider {
             return nil
         }
         let lower = raw.lowercased()
-        if lower.contains("ultra") {
+        if lower.contains("ultra") || lower.contains("heavy") || lower.contains("20x") {
             return "Ultra · 20x"
         }
-        if lower == "pro_plus" || lower == "pro+" || lower == "proplus" || lower == "pro plus" {
+        if lower.contains("pro_plus") || lower.contains("pro+") || lower.contains("proplus") || lower.contains("pro plus") || lower.contains("3x") {
             return "Pro+ · 3x"
+        }
+        if lower.contains("5x") {
+            return "Pro · 5x"
         }
         if lower == "super" {
             return "Super"

@@ -33,17 +33,41 @@ typedef struct {
 _Static_assert(sizeof(DockNativeTileFrameMsg) == 0x50, "Frame msg must be 80 bytes");
 _Static_assert(sizeof(DockNativeTileReleaseMsg) == 0x28, "Release msg must be 40 bytes");
 
-static mach_port_t lookup_dock_server_port(void) {
+#include <pthread.h>
+
+static pthread_mutex_t dock_port_lock = PTHREAD_MUTEX_INITIALIZER;
+static mach_port_t cached_dock_port = MACH_PORT_NULL;
+
+static mach_port_t acquire_dock_server_port(void) {
+    pthread_mutex_lock(&dock_port_lock);
+    if (cached_dock_port != MACH_PORT_NULL) {
+        mach_port_t p = cached_dock_port;
+        pthread_mutex_unlock(&dock_port_lock);
+        return p;
+    }
     mach_port_t bp = MACH_PORT_NULL;
     if (task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &bp) != KERN_SUCCESS) {
+        pthread_mutex_unlock(&dock_port_lock);
         return MACH_PORT_NULL;
     }
     mach_port_t dock_port = MACH_PORT_NULL;
     kern_return_t kr = bootstrap_look_up(bp, "com.apple.dock.server", &dock_port);
     if (kr != KERN_SUCCESS) {
+        pthread_mutex_unlock(&dock_port_lock);
         return MACH_PORT_NULL;
     }
+    cached_dock_port = dock_port;
+    pthread_mutex_unlock(&dock_port_lock);
     return dock_port;
+}
+
+static void invalidate_dock_server_port(mach_port_t stale_port) {
+    pthread_mutex_lock(&dock_port_lock);
+    if (cached_dock_port != MACH_PORT_NULL && cached_dock_port == stale_port) {
+        mach_port_deallocate(mach_task_self(), cached_dock_port);
+        cached_dock_port = MACH_PORT_NULL;
+    }
+    pthread_mutex_unlock(&dock_port_lock);
 }
 
 #pragma clang diagnostic push
@@ -62,7 +86,7 @@ bool native_dock_get_psn_for_pid(pid_t pid, NativeDockPSN *out_psn) {
 int32_t native_dock_draw_half_float_bytes(NativeDockPSN psn, const void *pixels, uint32_t side) {
     if (!pixels || side == 0 || side > 1024) return KERN_INVALID_ARGUMENT;
 
-    mach_port_t dock_port = lookup_dock_server_port();
+    mach_port_t dock_port = acquire_dock_server_port();
     if (dock_port == MACH_PORT_NULL) return KERN_FAILURE;
 
     const uint32_t bytes_per_row = side * 8;
@@ -93,17 +117,20 @@ int32_t native_dock_draw_half_float_bytes(NativeDockPSN psn, const void *pixels,
     msg.bitmap_info = bitmap_info;
     msg.data_length = data_length;
 
+    // 16ms budget (1 frame at 60Hz) so a momentary Dock.app stall NEVER freezes the 120Hz HoverTooltipPanel spring!
     kern_return_t kr = mach_msg(
         &msg.header,
         MACH_SEND_MSG | MACH_SEND_TIMEOUT,
         sizeof(DockNativeTileFrameMsg),
         0,
         MACH_PORT_NULL,
-        100,
+        16,
         MACH_PORT_NULL
     );
 
-    mach_port_deallocate(mach_task_self(), dock_port);
+    if (kr != KERN_SUCCESS && kr != MACH_SEND_TIMED_OUT) {
+        invalidate_dock_server_port(dock_port);
+    }
     return (int32_t)kr;
 }
 
@@ -131,35 +158,37 @@ int32_t native_dock_draw_tile(NativeDockPSN psn, CGImageRef image, uint32_t side
 }
 
 int32_t native_dock_release_tile(NativeDockPSN psn) {
-    mach_port_t dock_port = lookup_dock_server_port();
-    if (dock_port == MACH_PORT_NULL) return KERN_FAILURE;
-
-    DockNativeTileReleaseMsg msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
-    msg.header.msgh_size = sizeof(DockNativeTileReleaseMsg);
-    msg.header.msgh_remote_port = dock_port;
-    msg.header.msgh_local_port = MACH_PORT_NULL;
-    msg.header.msgh_id = 0x1791C;
-
-    msg.ndr = NDR_record;
-    msg.psn_hi = psn.high;
-    msg.psn_lo = psn.low;
-
     kern_return_t kr = KERN_FAILURE;
     for (int attempt = 0; attempt < 3; attempt++) {
+        mach_port_t dock_port = acquire_dock_server_port();
+        if (dock_port == MACH_PORT_NULL) return KERN_FAILURE;
+
+        DockNativeTileReleaseMsg msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
+        msg.header.msgh_size = sizeof(DockNativeTileReleaseMsg);
+        msg.header.msgh_remote_port = dock_port;
+        msg.header.msgh_local_port = MACH_PORT_NULL;
+        msg.header.msgh_id = 0x1791C;
+
+        msg.ndr = NDR_record;
+        msg.psn_hi = psn.high;
+        msg.psn_lo = psn.low;
+
         kr = mach_msg(
             &msg.header,
             MACH_SEND_MSG | MACH_SEND_TIMEOUT,
             sizeof(DockNativeTileReleaseMsg),
             0,
             MACH_PORT_NULL,
-            100,
+            24,
             MACH_PORT_NULL
         );
         if (kr == KERN_SUCCESS) break;
+        if (kr != MACH_SEND_TIMED_OUT) {
+            invalidate_dock_server_port(dock_port);
+        }
     }
 
-    mach_port_deallocate(mach_task_self(), dock_port);
     return (int32_t)kr;
 }

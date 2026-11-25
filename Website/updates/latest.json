@@ -1,18 +1,17 @@
 {
-  "build" : 132,
+  "build" : 133,
   "dmgUrl" : "https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg",
   "fallbackZipUrl" : "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",
   "notes" : [
-    "Dock 水波与图标徽标 100% 忠实于所选颜色/主题色，低额度仅在悬停与面板进度条变橙/红提醒",
-    "Antigravity 第三方模型池正式显示实际模型名「Claude / GPT」，不再误标厂商名 Anthropic",
-    "支持 Google AI Ultra 5x / 20x 档位徽章与副标题展示（AI Ultra · 5x / 20x），可在详情卡片一键标注",
-    "修复 Antigravity 满血未消耗池返回 1970-01-01 哨兵时间导致误显示「即将重置」并穿透缓存的问题"
+    "全平台统一 3x / 5x / 20x 套餐倍率引擎：覆盖 Antigravity / Gemini AI Ultra、ChatGPT Pro (5x/20x)、Claude Max (5x/20x)、Cursor (Pro+ 3x / Ultra 20x) 与 SuperGrok Heavy (20x)，菜单栏套餐徽章支持一键切换并按「应用 + 邮箱」独立记忆",
+    "消除 Dock 60Hz/30Hz 主线程高频同步 IPC（缓存 Dock 方位与 com.apple.dock.server Mach 端口、PID 零开销复用、发送超时压缩至 16ms），悬停滑行彻底零卡顿",
+    "引入 Antigravity / Codex 活动感知本地缓存，闲置期后台 CLI 唤醒次数降低约 65%；同步修复 agy 1.5.16 异步 plan_tier 竞态与多变体应用 tick() 图标锁定"
   ],
-  "publishedAt" : "2026-11-24T01:53:38Z",
-  "sha256" : "c5844b8b2509f4d81eb39987fc679ef830bce9bb8be6c4a773210d68fc45591b",
-  "signature" : "nRD3QpMVYhEk6TtDDoqA9SLuUeUlgnW7MXFQ3gSIfynckRvI9nCzEORmGIgWoJA0OwQ2d5VyiWb702BDU9lVDg==",
-  "title" : "v1.3.2 · 所见即所得水色、Claude / GPT 真实模型命名与 AI Ultra 5x/20x 档位",
+  "publishedAt" : "2026-11-25T03:12:30Z",
+  "sha256" : "608b70402b342a3cdf2c6ed9fe3cc53d5658d9199baa3a2f156cc68b8027bad4",
+  "signature" : "Zu4ZuaQUbIk7XqHmh6RRBol+6r5eRAtz8kXsCgg59NNkHBU/O7mGvvj5HrcjQ2rTCx0sqUxFFszcyZl8kW2mDA==",
+  "title" : "v1.3.3 · 全平台 3x/5x/20x 倍率引擎与零阻塞 Dock 悬停性能优化",
   "urgency" : "recommended",
-  "version" : "1.3.2",
+  "version" : "1.3.3",
   "zipUrl" : "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip"
 }

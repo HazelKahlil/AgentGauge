@@ -70,7 +70,8 @@ public final class AgentGaugeStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(antigravityPoolFocus.rawValue, forKey: "AgentGauge.antigravityPoolFocus")
             let focus = antigravityPoolFocus
-            let mult = antigravityUltraMultiplier
+            let email = snapshots[.antigravity]?.accountEmail
+            let mult = antigravityUltraMultiplier(forEmail: email)
             Task.detached(priority: .userInitiated) {
                 guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus, ultraMultiplier: mult) else { return }
                 await MainActor.run {
@@ -83,21 +84,81 @@ public final class AgentGaugeStore: ObservableObject {
         }
     }
 
-    @Published public var antigravityUltraMultiplier: AntigravityUltraMultiplier {
-        didSet {
-            UserDefaults.standard.set(antigravityUltraMultiplier.rawValue, forKey: "AgentGauge.antigravityUltraMultiplier")
-            let focus = antigravityPoolFocus
-            let mult = antigravityUltraMultiplier
-            Task.detached(priority: .userInitiated) {
-                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus, ultraMultiplier: mult) else { return }
-                await MainActor.run {
-                    let store = AgentGaugeStore.shared
-                    guard !store.promoFrozen else { return }
-                    store.snapshots[.antigravity] = updated
-                    store.overlayManager.updateSnapshots(store.snapshots)
-                }
+    @Published public var planMultipliersByAccount: [String: PlanMultiplierChoice] = [:]
+    private var rawSnapshots: [AgentID: QuotaSnapshot] = [:]
+
+    private static func planMultiplierAccountKey(agentID: AgentID, email: String?) -> String {
+        if let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
+            return "\(agentID.rawValue)|\(em)"
+        }
+        return agentID.rawValue
+    }
+
+    public func planMultiplier(for agentID: AgentID, email: String?) -> PlanMultiplierChoice {
+        let key = Self.planMultiplierAccountKey(agentID: agentID, email: email)
+        if let hit = planMultipliersByAccount[key] {
+            return hit
+        }
+        // Share Google AI Ultra per-email annotation seamlessly between Antigravity & Gemini
+        if (agentID == .antigravity || agentID == .gemini),
+           let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
+            let sibling: AgentID = (agentID == .antigravity) ? .gemini : .antigravity
+            if let sibHit = planMultipliersByAccount["\(sibling.rawValue)|\(em)"] {
+                return sibHit
             }
         }
+        return .auto
+    }
+
+    public func setPlanMultiplier(_ choice: PlanMultiplierChoice, for agentID: AgentID, email: String?) {
+        let key = Self.planMultiplierAccountKey(agentID: agentID, email: email)
+        if choice == .auto {
+            planMultipliersByAccount.removeValue(forKey: key)
+        } else {
+            planMultipliersByAccount[key] = choice
+        }
+        persistPlanMultipliers()
+
+        if agentID == .antigravity || agentID == .gemini {
+            AntigravityProvider.setSavedUltraMultiplier(choice, forEmail: email)
+        }
+
+        if let raw = rawSnapshots[agentID] ?? snapshots[agentID] {
+            let updated = applySavedPlanMultiplier(to: raw)
+            snapshots[agentID] = updated
+            overlayManager.updateSnapshots(snapshots)
+        }
+        // Sync sibling Google app immediately if same email is active
+        if (agentID == .antigravity || agentID == .gemini),
+           let em = email?.lowercased(), !em.isEmpty {
+            let sibling: AgentID = (agentID == .antigravity) ? .gemini : .antigravity
+            if let sibRaw = rawSnapshots[sibling] ?? snapshots[sibling],
+               sibRaw.accountEmail?.lowercased() == em {
+                snapshots[sibling] = applySavedPlanMultiplier(to: sibRaw)
+                overlayManager.updateSnapshots(snapshots)
+            }
+        }
+    }
+
+    private func persistPlanMultipliers() {
+        var dict: [String: String] = [:]
+        for (k, v) in planMultipliersByAccount where v != .auto {
+            dict[k] = v.rawValue
+        }
+        UserDefaults.standard.set(dict, forKey: "AgentGauge.planMultipliersByAccount")
+    }
+
+    private func applySavedPlanMultiplier(to snap: QuotaSnapshot) -> QuotaSnapshot {
+        let choice = planMultiplier(for: snap.agentID, email: snap.accountEmail)
+        return snap.applyingPlanMultiplier(choice)
+    }
+
+    public func antigravityUltraMultiplier(forEmail email: String?) -> PlanMultiplierChoice {
+        planMultiplier(for: .antigravity, email: email)
+    }
+
+    public func setAntigravityUltraMultiplier(_ mult: PlanMultiplierChoice, forEmail email: String?) {
+        setPlanMultiplier(mult, for: .antigravity, email: email)
     }
 
     @Published public var numberColorMode: NumberColorMode {
@@ -305,12 +366,23 @@ public final class AgentGaugeStore: ObservableObject {
             self.antigravityPoolFocus = .autoActiveModel
         }
 
-        if let multRaw = defaults.string(forKey: "AgentGauge.antigravityUltraMultiplier"),
-           let multMode = AntigravityUltraMultiplier(rawValue: multRaw) {
-            self.antigravityUltraMultiplier = multMode
-        } else {
-            self.antigravityUltraMultiplier = .auto
+        var loadedMultipliers: [String: PlanMultiplierChoice] = [:]
+        if let rawUnified = defaults.dictionary(forKey: "AgentGauge.planMultipliersByAccount") as? [String: String] {
+            for (k, v) in rawUnified {
+                if let m = PlanMultiplierChoice(rawValue: v), m != .auto {
+                    loadedMultipliers[k.lowercased()] = m
+                }
+            }
         }
+        if let rawAgyMap = defaults.dictionary(forKey: "AgentGauge.antigravityUltraMultipliersByEmail") as? [String: String] {
+            for (em, v) in rawAgyMap {
+                let key = "antigravity|\(em.lowercased())"
+                if loadedMultipliers[key] == nil, let m = PlanMultiplierChoice(rawValue: v), m != .auto {
+                    loadedMultipliers[key] = m
+                }
+            }
+        }
+        self.planMultipliersByAccount = loadedMultipliers
 
         if !defaults.bool(forKey: "AgentGauge.migratedSmartInvert.v1") {
             defaults.set(true, forKey: "AgentGauge.migratedSmartInvert.v1")
@@ -376,7 +448,8 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func start() {
-        AppLogger.shared.log("System", "AgentGauge v1.3.2 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
+        let appVer = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
+        AppLogger.shared.log("System", "AgentGauge v\(appVer) 已启动 · AX=\(overlayManager.isAccessibilityTrusted)")
         overlayManager.onWakeNearDock = { [weak self] in
             self?.syncFastLocalStateOnUIWake()
         }
@@ -569,8 +642,10 @@ public final class AgentGaugeStore: ObservableObject {
                 await MainActor.run {
                     let store = AgentGaugeStore.shared
                     guard !store.promoFrozen else { return }
-                    if store.snapshots[.antigravity] != reevaluated {
-                        store.snapshots[.antigravity] = reevaluated
+                    store.rawSnapshots[.antigravity] = reevaluated
+                    let adjusted = store.applySavedPlanMultiplier(to: reevaluated)
+                    if store.snapshots[.antigravity] != adjusted {
+                        store.snapshots[.antigravity] = adjusted
                         store.overlayManager.updateSnapshots(store.snapshots)
                     }
                 }
@@ -642,10 +717,13 @@ public final class AgentGaugeStore: ObservableObject {
         }
 
         // Run provider fetch strictly off @MainActor so SQLite / File I/O / JSON parsing never blocks UI clicks!
-        let fresh = await Task.detached(priority: .utility) {
+        let freshRaw = await Task.detached(priority: .utility) {
             await provider.fetchSnapshot()
         }.value
         guard !promoFrozen else { return }
+
+        rawSnapshots[id] = freshRaw
+        let fresh = applySavedPlanMultiplier(to: freshRaw)
 
         if fresh.requiresWebLogin && !Self.nativeLocalAgents.contains(id) {
             webAuthVerified.remove(id)

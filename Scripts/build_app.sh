@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../VERSION
+source "${ROOT_DIR}/VERSION"
 APP_NAME="AgentGauge"
 BUNDLE_ID="com.kahlil.AgentGauge"
 INSTALL_DIR="/Applications"
@@ -65,9 +67,9 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.2</string>
+    <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>132</string>
+    <string>${BUILD}</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

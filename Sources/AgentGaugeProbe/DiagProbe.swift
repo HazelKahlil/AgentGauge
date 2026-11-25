@@ -100,6 +100,25 @@ struct DiagProbe {
                 precondition(agU5?.compactPlanBadge == "AI Ultra · 5x", "Ultra 5x compact badge mismatch")
                 precondition(agU20?.compactPlanBadge == "AI Ultra · 20x", "Ultra 20x compact badge mismatch")
             }
+            // Cross-platform Nx multiplier compact badge & override invariants (Antigravity, Codex/GPT, Claude, Cursor, Grok Bot)
+            let badgeChecks: [(AgentID, String, PlanMultiplierChoice, String)] = [
+                (.antigravity, "Google AI Ultra", .x20, "AI Ultra · 20x"),
+                (.antigravity, "Google AI Ultra", .x5, "AI Ultra · 5x"),
+                (.codex, "ChatGPT Pro (20x)", .auto, "Pro · 20x"),
+                (.codex, "ChatGPT Pro Lite (5x)", .x20, "Pro · 20x"),
+                (.claude, "Claude Max (20x)", .auto, "Max · 20x"),
+                (.claude, "Claude Max", .x5, "Max · 5x"),
+                (.claude, "Claude Pro", .x20, "Max · 20x"),
+                (.cursor, "Pro+ · 3x", .auto, "Pro+ · 3x"),
+                (.cursor, "Ultra · 20x", .auto, "Ultra · 20x"),
+                (.grokbot, "SuperGrok Heavy · 20x", .auto, "Heavy · 20x")
+            ]
+            for (aid, rawTier, choice, expected) in badgeChecks {
+                let s = QuotaSnapshot(agentID: aid, remainingPercent: 80, planTier: rawTier, sourceDescription: "test")
+                    .applyingPlanMultiplier(choice)
+                precondition(s.compactPlanBadge == expected, "Badge mismatch for \(aid.rawValue) '\(rawTier)'+\(choice.rawValue): got \(s.compactPlanBadge ?? "nil"), expected \(expected)")
+            }
+            print("[PASS] Cross-platform 3x/5x/20x plan multiplier badges verified across Antigravity, GPT/Codex, Claude, Cursor & Grok Bot")
             if let g = agGem?.remainingPercent, let a = agAnt?.remainingPercent, let m = agMin?.remainingPercent {
                 precondition(abs(m - min(g, a)) < 0.001, "minBottleneck must equal min(Gemini, Claude/GPT)")
             }

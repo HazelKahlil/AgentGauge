@@ -110,7 +110,7 @@ public struct GenericWebUsageProvider: UsageProvider {
           const em = text.match(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/);
           if (em) email = em[0];
 
-          const pm = text.match(/\\b(Coding\\s*Plan\\s*(?:Max|Pro|Lite)?|Token\\s*Plan|Ultra|Max\\s*20x|Max\\s*5x|SuperGrok|Pro\\+|Pro\\s*Plus|Premium|Enterprise|Team|Plus|Pro|Lite|VIP|Free)\\b/i);
+          const pm = text.match(/\\b(Coding\\s*Plan\\s*(?:Max|Pro|Lite)?|Token\\s*Plan|Ultra(?:\\s*(?:20x|5x))?|Max\\s*(?:20x|5x)|SuperGrok\\s*Heavy|SuperGrok|Pro\\+(?:\\s*3x)?|Pro\\s*Plus|Pro\\s*Lite(?:\\s*5x)?|Premium|Enterprise|Team|Plus|Pro|Lite|VIP|Free)\\b/i);
           if (pm) planTier = pm[1].trim();
 
           const pctRem = text.match(/(?:remaining|left|剩余|可用比例)[^\\d%]{0,18}(\\d+(?:\\.\\d+)?)\\s*%/i);

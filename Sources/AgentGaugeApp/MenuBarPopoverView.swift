@@ -268,7 +268,32 @@ struct MenuBarPopoverView: View {
                                     .lineLimit(1)
 
                                 if let planBadge {
-                                    PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
+                                    if agentID.supportsPlanMultiplierBadge {
+                                        let email = snap?.accountEmail
+                                        let currentMult = store.planMultiplier(for: agentID, email: email)
+                                        Menu {
+                                            ForEach(agentID.supportedMultiplierChoices) { mult in
+                                                Button {
+                                                    store.setPlanMultiplier(mult, for: agentID, email: email)
+                                                } label: {
+                                                    let labelText = mult == .auto ? "自动识别" : "\(mult.shortTitle) 倍档位"
+                                                    if currentMult == mult {
+                                                        Label(labelText, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(labelText)
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .menuIndicator(.hidden)
+                                        .fixedSize()
+                                        .help("点击切换当前账号套餐倍率（按账号独立记忆）")
+                                    } else {
+                                        PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
+                                    }
                                 }
                             }
 

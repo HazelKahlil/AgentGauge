@@ -516,39 +516,128 @@ public struct QuotaSnapshot: Sendable, Equatable {
             || errorMessage != prev.errorMessage
     }
 
-    /// Compact pill badge for tight card headers (e.g. "AI Ultra", "Pro Lite · 5x", "Pro · 20x", "Max 20x", "Plus").
+    /// Compact pill badge for tight card headers (e.g. "AI Ultra · 20x", "Pro Lite · 5x", "Pro · 20x", "Max · 20x", "Ultra · 20x", "Plus").
+    /// Always preserves explicit `Nx` multipliers (`3x`, `5x`, `10x`, `20x`) without ever truncating them off.
     public var compactPlanBadge: String? {
         guard let raw = planTier, !raw.isEmpty else { return nil }
         let lower = raw.lowercased()
-        if lower.contains("google ai ultra") {
-            if lower.contains("20x") { return "AI Ultra · 20x" }
-            if lower.contains("5x")  { return "AI Ultra · 5x" }
-            return "AI Ultra"
+
+        // Extract any explicit multiplier token (e.g. "20x", "5x", "3x") once up front so it is never lost
+        let detectedMult: String? = {
+            if let range = lower.range(of: #"\b(20|10|5|3|2)x\b"#, options: .regularExpression) {
+                return String(lower[range])
+            }
+            return nil
+        }()
+        func withMult(_ base: String) -> String {
+            guard let m = detectedMult else { return base }
+            if base.lowercased().contains(m) { return base }
+            return "\(base) · \(m)"
         }
-        if lower.contains("google ai pro")   { return "AI Pro" }
-        if lower.contains("pro lite") && lower.contains("5x") { return "Pro Lite · 5x" }
-        if lower.contains("chatgpt pro") && lower.contains("20x") { return "Pro · 20x" }
-        if lower.contains("chatgpt plus")    { return "Plus" }
-        if lower.contains("chatgpt team")    { return "Team" }
-        if lower.contains("chatgpt go")      { return "Go" }
-        if lower == "claude max"             { return "Max" }
-        if lower == "claude pro"             { return "Pro" }
-        if lower.contains("copilot pro+")    { return "Pro+" }
-        if lower.contains("copilot pro")     { return "Copilot Pro" }
+
+        if lower.contains("google ai ultra") { return withMult("AI Ultra") }
+        if lower.contains("google ai pro")   { return withMult("AI Pro") }
+        if lower.contains("pro lite")        { return withMult("Pro Lite") }
+        if lower.contains("chatgpt pro")     { return withMult("Pro") }
+        if lower.contains("chatgpt plus")    { return withMult("Plus") }
+        if lower.contains("chatgpt team")    { return withMult("Team") }
+        if lower.contains("chatgpt go")      { return withMult("Go") }
+        if lower.contains("claude max") || lower == "max" || lower.hasPrefix("max ") || lower.hasPrefix("max·") {
+            return withMult("Max")
+        }
+        if lower.contains("claude pro")      { return withMult("Pro") }
+        if lower.contains("copilot pro+")    { return withMult("Pro+") }
+        if lower.contains("copilot pro")     { return withMult("Copilot Pro") }
         if lower.contains("copilot free")    { return "Free" }
         if lower.contains("copilot business") { return "Business" }
         if lower.contains("deepseek api")    { return "API 余额" }
         if lower.contains("kimi api")        { return "API 余额" }
-        if lower.contains("coding plan")     { return "Coding Plan" }
-        if lower.contains("token plan")      { return "Token Plan" }
-        if lower.hasPrefix("premium")        { return "Premium" }
-        if lower.contains("supergrok heavy") { return "Heavy · 20x" }
-        if lower.contains("supergrok")       { return "SuperGrok" }
-        if lower.contains("套餐")            { return raw.replacingOccurrences(of: "套餐", with: "").trimmingCharacters(in: .whitespaces) }
-        if raw.count > 12 {
-            return String(raw.prefix(11)) + "…"
+        if lower.contains("coding plan")     { return withMult("Coding Plan") }
+        if lower.contains("token plan")      { return withMult("Token Plan") }
+        if lower.contains("supergrok heavy") { return withMult("Heavy") }
+        if lower.contains("supergrok")       { return withMult("SuperGrok") }
+        if lower.hasPrefix("pro+") || lower.contains("pro plus") { return withMult("Pro+") }
+        if lower.hasPrefix("ultra")          { return withMult("Ultra") }
+        if lower.hasPrefix("premium")        { return withMult("Premium") }
+        if lower.contains("套餐")            { return withMult(raw.replacingOccurrences(of: "套餐", with: "").trimmingCharacters(in: .whitespaces)) }
+
+        if let m = detectedMult {
+            let stripped = Self.stripMultiplierSuffix(from: raw)
+            let shortBase = stripped.count > 10 ? String(stripped.prefix(9)) + "…" : stripped
+            return shortBase.isEmpty ? m : "\(shortBase) · \(m)"
+        }
+        if raw.count > 14 {
+            return String(raw.prefix(13)) + "…"
         }
         return raw
+    }
+
+    public static func stripMultiplierSuffix(from tier: String) -> String {
+        var s = tier
+        let patterns = [
+            #"\s*\(\s*(?:20|10|5|3|2)x\s*\)"#,
+            #"\s*[·•\-]\s*(?:20|10|5|3|2)x\b"#,
+            #"\s+\b(?:20|10|5|3|2)x\b"#
+        ]
+        for pat in patterns {
+            s = s.replacingOccurrences(of: pat, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Returns a copy of this snapshot with an explicit per-account multiplier (`3x` / `5x` / `20x`) applied cleanly to `planTier`.
+    public func applyingPlanMultiplier(_ choice: PlanMultiplierChoice) -> QuotaSnapshot {
+        guard choice != .auto else { return self }
+        let baseRaw = Self.stripMultiplierSuffix(from: planTier ?? "")
+        let formattedTier: String = {
+            if baseRaw.isEmpty {
+                switch agentID {
+                case .antigravity, .gemini: return "Google AI Ultra (\(choice.rawValue))"
+                case .codex: return choice == .x20 ? "ChatGPT Pro (20x)" : "ChatGPT Pro Lite (\(choice.rawValue))"
+                case .claude: return "Claude Max (\(choice.rawValue))"
+                case .cursor: return choice == .x20 ? "Ultra · 20x" : "Pro+ · \(choice.rawValue)"
+                case .grokbot, .grok: return choice == .x20 ? "SuperGrok Heavy · 20x" : "SuperGrok (\(choice.rawValue))"
+                default: return choice.rawValue
+                }
+            }
+            if agentID == .codex {
+                let low = baseRaw.lowercased()
+                if choice == .x20 && low.contains("pro lite") {
+                    return "ChatGPT Pro (20x)"
+                }
+                if choice == .x5 && low == "chatgpt pro" {
+                    return "ChatGPT Pro Lite (5x)"
+                }
+            }
+            if agentID == .claude {
+                let low = baseRaw.lowercased()
+                if low == "pro" || low == "claude pro" || low == "max" || low == "claude max" {
+                    return "Claude Max (\(choice.rawValue))"
+                }
+            }
+            return "\(baseRaw) (\(choice.rawValue))"
+        }()
+
+        return QuotaSnapshot(
+            agentID: agentID,
+            remainingPercent: remainingPercent,
+            creditsRemaining: creditsRemaining,
+            creditsTotal: creditsTotal,
+            balanceDisplay: balanceDisplay,
+            dockBalanceShort: dockBalanceShort,
+            accountEmail: accountEmail,
+            planTier: formattedTier,
+            primaryLabel: primaryLabel,
+            resetsAt: resetsAt,
+            resetText: resetText,
+            windows: windows,
+            subtitle: subtitle,
+            isWorking: isWorking,
+            sourceDescription: sourceDescription,
+            updatedAt: updatedAt,
+            requiresWebLogin: requiresWebLogin,
+            errorMessage: errorMessage
+        )
     }
 
     /// Combined single-line account + subscription summary.
@@ -703,9 +792,11 @@ public enum AntigravityPoolFocus: String, CaseIterable, Codable, Sendable, Ident
     }
 }
 
-/// Optional multiplier suffix (`5x` / `20x`) for Google AI Ultra accounts when `agy` CLI reports generic `"Google AI Ultra"`.
-public enum AntigravityUltraMultiplier: String, CaseIterable, Codable, Sendable, Identifiable {
+/// Unified per-account subscription multiplier override (`自动 / 3x / 5x / 20x`) across tiered AI platforms
+/// (Antigravity / Gemini AI Ultra, ChatGPT / Codex Pro, Claude Max, Cursor Ultra / Pro+, Grok Bot / SuperGrok).
+public enum PlanMultiplierChoice: String, CaseIterable, Codable, Sendable, Identifiable {
     case auto = "auto"
+    case x3 = "3x"
     case x5 = "5x"
     case x20 = "20x"
 
@@ -714,11 +805,33 @@ public enum AntigravityUltraMultiplier: String, CaseIterable, Codable, Sendable,
     public var shortTitle: String {
         switch self {
         case .auto: return "自动"
+        case .x3:   return "3x"
         case .x5:   return "5x"
         case .x20:  return "20x"
         }
     }
 }
+
+public extension AgentID {
+    /// Multiplier choices relevant to each tiered AI subscription platform.
+    var supportedMultiplierChoices: [PlanMultiplierChoice] {
+        switch self {
+        case .antigravity, .gemini, .codex, .claude, .grokbot, .grok:
+            return [.auto, .x5, .x20]
+        case .cursor:
+            return [.auto, .x3, .x5, .x20]
+        default:
+            return []
+        }
+    }
+
+    var supportsPlanMultiplierBadge: Bool {
+        !supportedMultiplierChoices.isEmpty
+    }
+}
+
+/// Kept as an alias so existing references stay source-compatible.
+public typealias AntigravityUltraMultiplier = PlanMultiplierChoice
 
 public enum DockBadgeStyle: String, CaseIterable, Codable, Sendable, Identifiable {
     // I · Liquid Water Styles (4: #01 Screenshot Replica, 2 Kept Pure-Text Styles, #19 Concentric Auto-Dodge)

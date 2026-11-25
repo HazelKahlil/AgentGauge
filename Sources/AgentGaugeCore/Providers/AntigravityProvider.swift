@@ -41,7 +41,7 @@ private final class AntigravityEndpointCache: @unchecked Sendable {
 
     private let lock = NSLock()
     private var cachedPayload: CachedAGYPayload?
-    private var cachedBannerPlanTier: String?
+    private var cachedBannerPlanTiersByEmail: [String: String] = [:]
     private var lastBannerProbeAtByEmail: [String: Date] = [:]
 
     func invalidate() {
@@ -51,33 +51,34 @@ private final class AntigravityEndpointCache: @unchecked Sendable {
     }
 
     func getBannerPlanTier(for email: String?) -> String? {
+        guard let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty else {
+            return nil
+        }
         lock.lock()
         defer { lock.unlock() }
-        if let mem = cachedBannerPlanTier, !mem.isEmpty {
+        if let mem = cachedBannerPlanTiersByEmail[em], !mem.isEmpty {
             return mem
         }
-        if let em = email?.lowercased(), !em.isEmpty,
-           let saved = UserDefaults.standard.string(forKey: "AgentGauge.agyPlanTier.\(em)"),
+        if let saved = UserDefaults.standard.string(forKey: "AgentGauge.agyPlanTier.\(em)"),
            let savedAt = UserDefaults.standard.object(forKey: "AgentGauge.agyPlanTierAt.\(em)") as? Date,
            Date().timeIntervalSince(savedAt) < 86_400,
            !saved.isEmpty {
-            cachedBannerPlanTier = saved
+            cachedBannerPlanTiersByEmail[em] = saved
             return saved
         }
         return nil
     }
 
     func setBannerPlanTier(_ tier: String, for email: String?) {
+        guard let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty, !tier.isEmpty else {
+            return
+        }
         lock.lock()
-        cachedBannerPlanTier = tier
-        if let em = email?.lowercased(), !em.isEmpty {
-            lastBannerProbeAtByEmail[em] = Date()
-        }
+        cachedBannerPlanTiersByEmail[em] = tier
+        lastBannerProbeAtByEmail[em] = Date()
         lock.unlock()
-        if let em = email?.lowercased(), !em.isEmpty {
-            UserDefaults.standard.set(tier, forKey: "AgentGauge.agyPlanTier.\(em)")
-            UserDefaults.standard.set(Date(), forKey: "AgentGauge.agyPlanTierAt.\(em)")
-        }
+        UserDefaults.standard.set(tier, forKey: "AgentGauge.agyPlanTier.\(em)")
+        UserDefaults.standard.set(Date(), forKey: "AgentGauge.agyPlanTierAt.\(em)")
     }
 
     func shouldProbeBannerTier(for email: String?) -> Bool {
@@ -94,7 +95,7 @@ private final class AntigravityEndpointCache: @unchecked Sendable {
         return true
     }
 
-    func getPayload(isAppRunning: Bool, isWorking: Bool) -> CachedAGYPayload? {
+    func getPayload(isAppRunning: Bool, isWorking: Bool, latestActivityMtime: Date?) -> CachedAGYPayload? {
         lock.lock()
         defer { lock.unlock() }
         guard let payload = cachedPayload else { return nil }
@@ -107,10 +108,16 @@ private final class AntigravityEndpointCache: @unchecked Sendable {
             }
         }
 
+        // Activity-aware invalidation: if Antigravity Desktop wrote new trajectory state after our last fetch
+        // and at least 35s have elapsed, refresh promptly; if completely untouched while idle, extend TTL to 480s
+        // to cut expensive `agy` Go language-server spawns by ~65% with zero staleness!
+        let hasNewLocalActivity = latestActivityMtime.map { $0 > payload.fetchedAt } ?? false
         let maxAge: TimeInterval = if isWorking {
-            90.0
+            75.0
+        } else if hasNewLocalActivity {
+            45.0
         } else if isAppRunning {
-            175.0
+            480.0
         } else {
             900.0
         }
@@ -168,12 +175,29 @@ public struct AntigravityProvider: UsageProvider {
         return .autoActiveModel
     }
 
-    public static func currentSavedUltraMultiplier() -> AntigravityUltraMultiplier {
-        if let raw = UserDefaults.standard.string(forKey: "AgentGauge.antigravityUltraMultiplier"),
+    public static func currentSavedUltraMultiplier(forEmail email: String? = nil) -> AntigravityUltraMultiplier {
+        let defaults = UserDefaults.standard
+        if let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty,
+           let map = defaults.dictionary(forKey: "AgentGauge.antigravityUltraMultipliersByEmail") as? [String: String],
+           let raw = map[em],
            let tier = AntigravityUltraMultiplier(rawValue: raw) {
             return tier
         }
         return .auto
+    }
+
+    public static func setSavedUltraMultiplier(_ tier: AntigravityUltraMultiplier, forEmail email: String?) {
+        guard let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty else {
+            return
+        }
+        let defaults = UserDefaults.standard
+        var map = (defaults.dictionary(forKey: "AgentGauge.antigravityUltraMultipliersByEmail") as? [String: String]) ?? [:]
+        if tier == .auto {
+            map.removeValue(forKey: em)
+        } else {
+            map[em] = tier.rawValue
+        }
+        defaults.set(map, forKey: "AgentGauge.antigravityUltraMultipliersByEmail")
     }
 
     /// Re-evaluates cached Antigravity dual-pool buckets in <0.5ms without spawning `agy` CLI.
@@ -184,7 +208,7 @@ public struct AntigravityProvider: UsageProvider {
     ) -> QuotaSnapshot? {
         guard let payload = AntigravityEndpointCache.shared.peekUnexpiredPayload() else { return nil }
         let focus = poolFocus ?? currentSavedPoolFocus()
-        let mult = ultraMultiplier ?? currentSavedUltraMultiplier()
+        let mult = ultraMultiplier ?? currentSavedUltraMultiplier(forEmail: payload.email)
         let isWorking = checkIsWorking()
         let desktopPool = (focus == .autoActiveModel) ? detectActiveDesktopPool() : nil
         return buildSnapshot(
@@ -202,12 +226,14 @@ public struct AntigravityProvider: UsageProvider {
             !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.antigravity").isEmpty
         }
         let focus = Self.currentSavedPoolFocus()
-        let mult = Self.currentSavedUltraMultiplier()
         let desktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
 
-        if let recent = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAppRunning, isWorking: isWorking),
-           let snap = Self.buildSnapshot(from: recent, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: desktopPool, isWorking: isWorking) {
-            return snap
+        let latestMtime = Self.latestLocalActivityMtime()
+        if let recent = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAppRunning, isWorking: isWorking, latestActivityMtime: latestMtime) {
+            let mult = Self.currentSavedUltraMultiplier(forEmail: recent.email)
+            if let snap = Self.buildSnapshot(from: recent, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: desktopPool, isWorking: isWorking) {
+                return snap
+            }
         }
 
         if let freshPayload = await AntigravityCLISingleFlight.shared.fetch(operation: {
@@ -215,6 +241,7 @@ public struct AntigravityProvider: UsageProvider {
         }) {
             AntigravityEndpointCache.shared.setPayload(freshPayload)
             let refreshedDesktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
+            let mult = Self.currentSavedUltraMultiplier(forEmail: freshPayload.email)
             if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
                 return snap
             }
@@ -326,60 +353,53 @@ public struct AntigravityProvider: UsageProvider {
         var quotaDetectedAt: Date?
         var parsedEmail: String?
         var detectedBannerTier: String?
-        var allowSlowBannerProbe = false
-        var tierProbeStage = 0
-        var stageTimestamp = Date()
-        let deadline = launchDate.addingTimeInterval(7.5)
+        var shouldWaitForPlanTier = false
+        let deadline = launchDate.addingTimeInterval(11.5)
 
         while Date() < deadline {
             drainStdout()
 
-            if parsedRoot == nil,
+            // Continuously re-read outFile until `plan_tier` arrives:
+            // agy 1.5.16+ writes `quota` first (~3.8s) and populates `plan_tier` natively ~1.5s later without any modal input!
+            if (parsedRoot == nil || detectedBannerTier == nil),
                let data = try? Data(contentsOf: outFile), data.count > 20,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let quotaDict = json["quota"] as? [String: Any], !quotaDict.isEmpty {
                 parsedRoot = json
-                quotaDetectedAt = Date()
-                parsedEmail = (json["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if quotaDetectedAt == nil {
+                    quotaDetectedAt = Date()
+                }
+                if let em = (json["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
+                    parsedEmail = em
+                }
                 if let jsonTier = (json["plan_tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !jsonTier.isEmpty {
-                    detectedBannerTier = normalizeGooglePlanTier(jsonTier)
-                } else if let cachedTier = AntigravityEndpointCache.shared.getBannerPlanTier(for: parsedEmail) {
-                    detectedBannerTier = cachedTier
-                } else {
-                    allowSlowBannerProbe = AntigravityEndpointCache.shared.shouldProbeBannerTier(for: parsedEmail)
+                    let norm = normalizeGooglePlanTier(jsonTier)
+                    detectedBannerTier = norm
+                    AntigravityEndpointCache.shared.setBannerPlanTier(norm, for: parsedEmail)
+                } else if detectedBannerTier == nil {
+                    if let cachedTier = AntigravityEndpointCache.shared.getBannerPlanTier(for: parsedEmail) {
+                        detectedBannerTier = cachedTier
+                    } else if !shouldWaitForPlanTier {
+                        shouldWaitForPlanTier = AntigravityEndpointCache.shared.shouldProbeBannerTier(for: parsedEmail)
+                    }
                 }
             }
 
             if detectedBannerTier == nil && !bannerBytes.isEmpty {
-                detectedBannerTier = extractPlanTierFromAGYBanner(bannerBytes)
+                if let extracted = extractPlanTierFromAGYBanner(bannerBytes) {
+                    detectedBannerTier = extracted
+                    AntigravityEndpointCache.shared.setBannerPlanTier(extracted, for: parsedEmail)
+                }
             }
 
             if parsedRoot != nil {
-                // Fast exit (~0.75s) when tier is already known or recently probed!
-                if detectedBannerTier != nil || !allowSlowBannerProbe {
+                // Fast exit when tier is already known or cached!
+                if detectedBannerTier != nil || !shouldWaitForPlanTier {
                     break
                 }
-                let cleaned = cleanANSIText(bannerBytes)
-                let headerMounted: Bool = {
-                    if let em = parsedEmail, !em.isEmpty, cleaned.contains(em) {
-                        return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 0.35
-                    }
-                    return Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 0.90
-                }()
-
-                if tierProbeStage == 0 && headerMounted {
-                    writeStdin("/credits\r")
-                    tierProbeStage = 1
-                    stageTimestamp = Date()
-                } else if tierProbeStage == 1 {
-                    if cleaned.contains("Antigravity CLI credits") || Date().timeIntervalSince(stageTimestamp) >= 0.95 {
-                        Thread.sleep(forTimeInterval: 0.08)
-                        writeStdin("\u{1B}")
-                        tierProbeStage = 2
-                        stageTimestamp = Date()
-                    }
-                } else if tierProbeStage == 2 && Date().timeIntervalSince(stageTimestamp) >= 0.65 {
+                // Wait cleanly up to 4.5s after quota arrives for agy's native `plan_tier` statusLine update (only once per 24h per email!)
+                if Date().timeIntervalSince(quotaDetectedAt ?? launchDate) >= 4.5 {
                     break
                 }
             }
@@ -391,8 +411,22 @@ public struct AntigravityProvider: UsageProvider {
         }
 
         drainStdout()
+        if let data = try? Data(contentsOf: outFile), data.count > 20,
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let quotaDict = json["quota"] as? [String: Any], !quotaDict.isEmpty {
+            parsedRoot = json
+            if let jsonTier = (json["plan_tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !jsonTier.isEmpty {
+                let norm = normalizeGooglePlanTier(jsonTier)
+                detectedBannerTier = norm
+                AntigravityEndpointCache.shared.setBannerPlanTier(norm, for: parsedEmail)
+            }
+        }
         if detectedBannerTier == nil && !bannerBytes.isEmpty {
-            detectedBannerTier = extractPlanTierFromAGYBanner(bannerBytes)
+            if let extracted = extractPlanTierFromAGYBanner(bannerBytes) {
+                detectedBannerTier = extracted
+                AntigravityEndpointCache.shared.setBannerPlanTier(extracted, for: parsedEmail)
+            }
         }
         if let tier = detectedBannerTier, !tier.isEmpty {
             AntigravityEndpointCache.shared.setBannerPlanTier(tier, for: parsedEmail)
@@ -829,7 +863,7 @@ public struct AntigravityProvider: UsageProvider {
         return nil
     }
 
-    private static func normalizeGooglePlanTier(_ raw: String) -> String {
+    static func normalizeGooglePlanTier(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
         if lower.contains("ultra") {
@@ -849,10 +883,11 @@ public struct AntigravityProvider: UsageProvider {
         guard let tier, !tier.isEmpty else { return nil }
         let lower = tier.lowercased()
         guard lower.contains("google ai ultra") else { return tier }
-        // Keep explicit API-reported multiplier if Google ever includes 5x/20x directly, unless user chose a specific override
         switch override {
         case .auto:
             return tier
+        case .x3:
+            return "Google AI Ultra (3x)"
         case .x5:
             return "Google AI Ultra (5x)"
         case .x20:
@@ -860,7 +895,7 @@ public struct AntigravityProvider: UsageProvider {
         }
     }
 
-    private static func parseISODate(_ raw: String?) -> Date? {
+    static func parseISODate(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
         let minValidEpoch: TimeInterval = 946_684_800 // 2000-01-01T00:00:00Z; filters out 1970-01-01 unset sentinels!
         let fFrac = ISO8601DateFormatter()
@@ -879,6 +914,23 @@ public struct AntigravityProvider: UsageProvider {
             return Date(timeIntervalSince1970: secs)
         }
         return nil
+    }
+
+    private static func latestLocalActivityMtime() -> Date? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let paths = [
+            "\(home)/.gemini/antigravity/conversation_summaries.db-wal",
+            "\(home)/.gemini/antigravity/conversation_summaries.db",
+            "\(home)/.gemini/antigravity/cli.log"
+        ]
+        var newest: Date?
+        for p in paths {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: p),
+               let m = attrs[.modificationDate] as? Date {
+                if newest == nil || m > newest! { newest = m }
+            }
+        }
+        return newest
     }
 
     private static func checkIsWorking() -> Bool {

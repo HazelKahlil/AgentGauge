@@ -40,6 +40,11 @@ let package = Package(
             name: "AgentGaugeProbe",
             dependencies: ["AgentGaugeCore", "CNativeDockTile"],
             path: "Sources/AgentGaugeProbe"
+        ),
+        .testTarget(
+            name: "AgentGaugeCoreTests",
+            dependencies: ["AgentGaugeCore"],
+            path: "Tests/AgentGaugeCoreTests"
         )
     ]
 )

@@ -123,6 +123,10 @@ public struct ClaudeProvider: UsageProvider {
                 else if (/claude_pro|pro/i.test(caps)) planRaw = 'pro';
                 else if (/team/i.test(caps)) planRaw = 'team';
                 else if (/enterprise/i.test(caps)) planRaw = 'enterprise';
+                if (!rateTier || !/(20x|5x)/i.test(rateTier)) {
+                  const pageMult = text.match(/\\bMax\\s*(20x|5x)\\b|\\b(20x|5x)\\s*(?:more\\s+usage|usage|higher)\\b/i);
+                  if (pageMult) rateTier = (rateTier ? rateTier + ' ' : '') + (pageMult[1] || pageMult[2]);
+                }
 
                 const uResp = await fetch(`/api/organizations/${org.uuid}/usage`, { credentials: 'include' });
                 if (uResp.ok) {
@@ -381,15 +385,22 @@ public struct ClaudeProvider: UsageProvider {
         )
     }
 
+    /// Anthropic `/api/oauth/usage` returns `utilization` strictly in `0...100` percentage points
+    /// (never `0...1` fractional decimals, even when usage is `<= 1.0%`).
+    static func remainingPercent(fromAnthropicUtilization util: Double) -> Double {
+        let usedPct = max(0, min(100, util))
+        return max(0, min(100, 100.0 - usedPct))
+    }
+
     public static func formatClaudePlan(subscriptionType: String?, rateLimitTier: String?) -> String? {
         let combined = "\(subscriptionType ?? "") \(rateLimitTier ?? "")".lowercased()
         if combined.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
-        if combined.contains("20x") { return "Max 20x" }
-        if combined.contains("5x")  { return "Max 5x" }
+        if combined.contains("20x") { return "Claude Max (20x)" }
+        if combined.contains("5x")  { return "Claude Max (5x)" }
         if combined.contains("max") { return "Claude Max" }
         if combined.contains("enterprise") { return "Enterprise" }
         if combined.contains("team") { return "Team" }
-        if combined.contains("pro") { return "Pro" }
+        if combined.contains("pro") { return "Claude Pro" }
         if combined.contains("free") { return "Free" }
         return subscriptionType?.capitalized
     }
@@ -443,8 +454,7 @@ public struct ClaudeProvider: UsageProvider {
                 guard let obj = root[key] as? [String: Any],
                       let util = (obj["utilization"] as? NSNumber)?.doubleValue else { continue }
                 // Anthropic `/api/oauth/usage` returns `utilization` in 0..100 percentage points
-                let usedPct = max(0, min(100, util))
-                let rem = max(0, min(100, 100.0 - usedPct))
+                let rem = Self.remainingPercent(fromAnthropicUtilization: util)
                 let resetStr = obj["resets_at"] as? String
                 let resetDate = resetStr.flatMap { isoFrac.date(from: $0) ?? isoStd.date(from: $0) }
                 let resetText: String? = (resetDate == nil && key == "five_hour" && rem >= 99.95) ? "未消耗" : nil

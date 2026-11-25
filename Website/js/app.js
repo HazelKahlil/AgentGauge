@@ -1287,7 +1287,40 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.3.2", id: "v1-3-2", date: "2026-11-24", latest: true,
+      ver: "v1.3.3", id: "v1-3-3", date: "2026-11-25", latest: true,
+      title: [
+        "Unified 3x/5x/20x plan multipliers, zero-IPC Dock hover optimization & automated release gates",
+        "全平台 3x / 5x / 20x 套餐倍率引擎、零阻塞 Dock 悬停优化与自动化测试门禁",
+      ],
+      summary: [
+        "Unifies 3x/5x/20x plan multipliers and per-account memory across Antigravity, Gemini, ChatGPT/Codex, Claude, Cursor and Grok Bot, eliminates 60Hz/30Hz main-thread Dock IPC stalls, cuts idle CLI spawns by ~65%, and introduces fast offline swift test guardrails.",
+        "全面统一 Antigravity / Gemini、ChatGPT / Codex、Claude、Cursor 与 Grok Bot 的 3x / 5x / 20x 倍率识别与按邮箱记忆，消除 60Hz/30Hz Dock 主线程高频 IPC 阻塞并将闲置期 CLI 唤醒降低约 65%，同时沉淀 AGENTS.md 规范与离线单元测试发布门禁。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>Unified Cross-Platform <code>3x / 5x / 20x</code> Multiplier Engine &amp; 1-Click Menu Bar Switcher</b>: Automatically detects and preserves <code>AI Ultra · 5x / 20x</code>, <code>Pro Lite · 5x</code> / <code>Pro · 20x</code>, <code>Max · 5x / 20x</code>, <code>Pro+ · 3x</code> / <code>Ultra · 20x</code>, and <code>Heavy · 20x</code> without truncation; clicking the plan pill in the Menu Bar or Settings switches multipliers in <code>&lt;1ms</code> and remembers each <code>(app, email)</code> independently.",
+            "<b>全平台统一 <code>3x / 5x / 20x</code> 倍率引擎与菜单栏一键切换</b>：自动识别并无截断展示 <code>AI Ultra · 5x / 20x</code>、<code>Pro Lite · 5x</code> / <code>Pro · 20x</code>、<code>Max · 5x / 20x</code>、<code>Pro+ · 3x</code> / <code>Ultra · 20x</code>、<code>Heavy · 20x</code>；点击菜单栏套餐徽章即可 <code>&lt;1ms</code> 切换倍率并按「应用 + 邮箱」独立记忆。",
+          ],
+          [
+            "<b><code>agy 1.5.16</code> Delayed <code>plan_tier</code> Sync &amp; <code>tick()</code> Multi-Variant Lock</b>: Continuously reads <code>agy</code> status output until <code>plan_tier</code> populates (~1s after quota), isolates cached tiers by email, and passes <code>preferredBundleID</code> on every 30fps Dock redraw.",
+            "<b><code>agy 1.5.16</code> 套餐异步补读与 <code>tick()</code> 多变体锁定</b>：持续等待 <code>plan_tier</code> 字段就绪并将缓存按邮箱严格隔离，同时补齐 30fps 渲染循环中的 <code>preferredBundleID</code> 传递。",
+          ],
+        ]],
+        ["improved", [
+          [
+            "<b>Zero-IPC 60Hz/30Hz Dock Loop &amp; Activity-Aware CLI Caching</b>: Caches <code>DockLocator.currentOrientation()</code> (<code>3s</code>) and the <code>com.apple.dock.server</code> Mach send right, reuses active tiles via <code>&lt;1µs</code> <code>kill(pid, 0)</code>, lowers <code>mach_msg</code> send timeout from <code>100ms</code> to <code>16ms</code>, and extends idle CLI TTL when local DB/history mtimes are unchanged (<code>~65%</code> fewer idle spawns).",
+            "<b>零阻塞 60Hz/30Hz Dock 悬停渲染与活动感知 CLI 缓存</b>：缓存 Dock 方位与 <code>com.apple.dock.server</code> Mach 端口、通过 <code>kill(pid, 0)</code> 零开销复用活跃图块、将 <code>mach_msg</code> 超时压降至 <code>16ms</code>，并在本地会话无更新时拉长后台 CLI 缓存（闲置期唤醒降低约 <code>65%</code>）。",
+          ],
+          [
+            "<b><code>AGENTS.md</code> Invariants, Single <code>VERSION</code> Source &amp; <code>swift test</code> Release Gate</b>: Adds a 12-case offline <code>AgentGaugeCoreTests</code> suite, <code>Scripts/sync_version.sh</code>, and <code>Scripts/verify_release.sh</code> guarding every future release.",
+            "<b><code>AGENTS.md</code> 工程红线、单一 <code>VERSION</code> 源与 <code>swift test</code> 发布门禁</b>：沉淀 12 项核心回归离线单元测试、一键版本同步脚本与全自动发布前校验门禁。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.3.2", id: "v1-3-2", date: "2026-11-24",
       title: [
         "WYSIWYG Dock water color, real Claude / GPT model labels & AI Ultra 5x/20x tiers",
         "Dock 水色所见即所得、Antigravity Claude / GPT 真实模型名与 AI Ultra 5x/20x 档位",

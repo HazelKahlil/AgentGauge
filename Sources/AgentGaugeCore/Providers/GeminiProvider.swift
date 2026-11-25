@@ -171,8 +171,13 @@ public struct GeminiProvider: UsageProvider {
           if (em) email = em[0];
 
           let planTier = null;
-          if (/\\bGoogle\\s*AI\\s*Ultra\\b|\\bUltra\\b/i.test(text)) planTier = 'Google AI Ultra';
-          else if (/\\bGoogle\\s*AI\\s*Pro\\b|\\bAdvanced\\b|\\bPro\\b/i.test(text)) planTier = 'Google AI Pro';
+          if (/\\bGoogle\\s*AI\\s*Ultra\\b|\\bUltra\\b/i.test(text)) {
+            if (/\\b20x\\b/i.test(text)) planTier = 'Google AI Ultra (20x)';
+            else if (/\\b5x\\b/i.test(text)) planTier = 'Google AI Ultra (5x)';
+            else planTier = 'Google AI Ultra';
+          } else if (/\\bGoogle\\s*AI\\s*Pro\\b|\\bAdvanced\\b|\\bPro\\b/i.test(text)) {
+            planTier = 'Google AI Pro';
+          }
 
           return JSON.stringify({
             loggedIn: windows.length > 0,
@@ -225,11 +230,20 @@ public struct GeminiProvider: UsageProvider {
             )
         }
 
+        let resolvedEmail = (json["email"] as? String)?.nilIfEmpty
+        var resolvedPlan = (json["planTier"] as? String)?.nilIfEmpty
+        if resolvedPlan?.lowercased() == "google ai ultra" {
+            let mult = AntigravityProvider.currentSavedUltraMultiplier(forEmail: resolvedEmail)
+            if mult != .auto {
+                resolvedPlan = "Google AI Ultra (\(mult.rawValue))"
+            }
+        }
+
         return QuotaSnapshot(
             agentID: .gemini,
             remainingPercent: limiting.remaining,
-            accountEmail: (json["email"] as? String)?.nilIfEmpty,
-            planTier: (json["planTier"] as? String)?.nilIfEmpty,
+            accountEmail: resolvedEmail,
+            planTier: resolvedPlan,
             primaryLabel: limiting.label,
             resetText: limiting.resetText,
             windows: windows,

@@ -15,7 +15,7 @@ private final class CodexSnapshotCache: @unchecked Sendable {
         lock.unlock()
     }
 
-    func get(isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
+    func get(isAppRunning: Bool, isWorking: Bool, latestActivityMtime: Date?) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
         guard let snap = cached else { return nil }
@@ -28,7 +28,17 @@ private final class CodexSnapshotCache: @unchecked Sendable {
                 return nil
             }
         }
-        let maxAge: TimeInterval = (isAppRunning || isWorking) ? 85.0 : 300.0
+        // Activity-aware TTL: avoid spawning `codex app-server` (~3.5s) every 85s when no new prompts were written!
+        let hasNewActivity = latestActivityMtime.map { $0 > cachedAt } ?? false
+        let maxAge: TimeInterval = if isWorking {
+            65.0
+        } else if hasNewActivity {
+            45.0
+        } else if isAppRunning {
+            300.0
+        } else {
+            600.0
+        }
         guard now.timeIntervalSince(cachedAt) <= maxAge else {
             return nil
         }
@@ -59,7 +69,8 @@ public struct CodexProvider: UsageProvider {
                 !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
             }
         }
-        if let recent = CodexSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking) {
+        let latestActivity = Self.latestCodexActivityMtime()
+        if let recent = CodexSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking, latestActivityMtime: latestActivity) {
             return QuotaSnapshot(
                 agentID: .codex,
                 remainingPercent: recent.remainingPercent,
@@ -260,9 +271,9 @@ public struct CodexProvider: UsageProvider {
             return nil
         }
         switch raw {
-        case "pro":
+        case "pro", "pro20x", "pro_20x", "pro-20x":
             return "ChatGPT Pro (20x)"
-        case "prolite", "pro_lite", "pro-lite":
+        case "prolite", "pro_lite", "pro-lite", "pro5x", "pro_5x", "pro-5x":
             return "ChatGPT Pro Lite (5x)"
         case "plus":
             return "ChatGPT Plus"
@@ -332,8 +343,9 @@ public struct CodexProvider: UsageProvider {
                     return
                 }
 
+                let clientVer = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
                 let requests: [[String: Any]] = [
-                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": "1.3.2"]]],
+                    ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["clientInfo": ["name": "AgentGauge", "version": clientVer]]],
                     ["jsonrpc": "2.0", "method": "initialized", "params": [:]],
                     ["jsonrpc": "2.0", "id": 2, "method": "account/read", "params": [:]],
                     ["jsonrpc": "2.0", "id": 3, "method": "account/rateLimits/read", "params": [:]]
@@ -387,6 +399,23 @@ public struct CodexProvider: UsageProvider {
                 }
             }
         }
+    }
+
+    private static func latestCodexActivityMtime() -> Date? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let paths = [
+            "\(home)/.codex/history.jsonl",
+            "\(home)/.codex/state_5.sqlite-wal",
+            "\(home)/.codex/state_5.sqlite"
+        ]
+        var newest: Date?
+        for p in paths {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: p),
+               let m = attrs[.modificationDate] as? Date {
+                if newest == nil || m > newest! { newest = m }
+            }
+        }
+        return newest
     }
 
     private static func checkIsWorking() -> Bool {

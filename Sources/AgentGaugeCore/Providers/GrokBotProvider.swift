@@ -170,8 +170,14 @@ public struct GrokBotProvider: UsageProvider {
 
         let planTier: String? = {
             if isTrial { return "Trial" }
+            let combined = "\(unifiedPlan ?? "") \(grokLabel ?? "")".lowercased()
+            if combined.contains("heavy") || combined.contains("ultra") || combined.contains("20x") {
+                return "SuperGrok Heavy · 20x"
+            }
+            if combined.contains("5x") {
+                return "SuperGrok · 5x"
+            }
             if let up = unifiedPlan?.lowercased() {
-                if up.contains("ultra") || up.contains("heavy") { return "SuperGrok Heavy · 20x" }
                 if up.contains("super") { return "SuperGrok" }
                 if up == "premium" { return isTeam ? "Premium Team" : "Premium" }
                 if up == "pro" { return "Pro" }

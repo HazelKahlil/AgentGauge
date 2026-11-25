@@ -57,6 +57,8 @@ public final class DockLocator: @unchecked Sendable {
     private let axQueue = DispatchQueue(label: "com.kahlil.AgentGauge.ax", qos: .userInteractive)
     private let cacheLock = NSLock()
     private var cachedBundleIDByPath: [String: String] = [:]
+    private var cachedOrientation: DockOrientation = .bottom
+    private var lastOrientationFetch: TimeInterval = 0
 
     public init() {}
 
@@ -73,12 +75,30 @@ public final class DockLocator: @unchecked Sendable {
         }
     }
 
+    /// Cached (3.0s TTL) Dock orientation lookup so 60Hz hover ticks & global mouseMoved never spam CFPreferences IPC on @MainActor.
     public func currentOrientation() -> DockOrientation {
+        let now = Date().timeIntervalSinceReferenceDate
+        cacheLock.lock()
+        if (now - lastOrientationFetch) < 3.0 {
+            let hit = cachedOrientation
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
+
+        let resolved: DockOrientation
         if let raw = UserDefaults(suiteName: "com.apple.dock")?.string(forKey: "orientation")?.lowercased(),
            let ori = DockOrientation(rawValue: raw) {
-            return ori
+            resolved = ori
+        } else {
+            resolved = .bottom
         }
-        return .bottom
+
+        cacheLock.lock()
+        cachedOrientation = resolved
+        lastOrientationFetch = now
+        cacheLock.unlock()
+        return resolved
     }
 
     /// Reads all matching Dock icon rectangles once off-main-thread so 60fps hover hit-testing is instant (0ms).

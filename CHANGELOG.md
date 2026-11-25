@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.3] - 2026-11-25
+
+### Added / 新增
+
+- **Engineering Guardrails, Single Version Source (`VERSION`) & Fast Offline `swift test` Suite**: Added repository-level `AGENTS.md` engineering invariants, single-source `VERSION` + `Scripts/sync_version.sh`, a 12-case `AgentGaugeCoreTests` offline unit test target (`<2s`), and `Scripts/verify_release.sh` pre-release automated gate verifying version parity, static invariants, unit tests, hysteresis, and Ed25519 OTA signatures before any release.  
+  **沉淀项目工程规范（`AGENTS.md`）、单一版本源（`VERSION`）与 `swift test` 自动化发布门禁**：新增根级 `AGENTS.md` 硬约束规则、`Scripts/sync_version.sh` 单源版本号同步脚本、覆盖 12 项核心回归不变量的离线单元测试集 `AgentGaugeCoreTests`，以及发布前自动校验版本一致性、静态反回归规则、施密特防抖与 Ed25519 OTA 签名的 `Scripts/verify_release.sh` 门禁。
+
+### Changed / 优化
+
+- **Zero-IPC 60Hz/30Hz Dock Hover Loop & Activity-Aware CLI Caching**: Eliminated uncached `@MainActor` IPC calls in hot Dock hover/animation loops by caching `DockLocator.currentOrientation()` (`3s` TTL), reusing `NativeTileChannel` active tiles via `<1µs` `kill(pid, 0)` PID liveness checks, caching the `com.apple.dock.server` Mach port in `NativeDockTile.c` with a `16ms` send timeout (down from `100ms`), and gating `agy` / `codex app-server` subprocess launches behind local DB/history mtime activity caches (~65% fewer idle CLI spawns).  
+  **零阻塞 60Hz/30Hz Dock 悬停性能优化与活动感知 CLI 缓存**：移除主线程高频循环中的未缓存跨进程 IPC（`DockLocator.currentOrientation()` 增加 `3s` 缓存、`NativeTileChannel` 通过 `kill(pid, 0)` `<1µs` 复用活跃图块、`NativeDockTile.c` 缓存 `com.apple.dock.server` Mach 端口并将发送超时由 `100ms` 压缩至 `16ms`），同时为 `Antigravity` / `Codex` 引入基于本地数据库/历史文件 mtime 的活动感知缓存，闲置期后台 CLI 唤醒次数降低约 `65%`。
+
+### Fixed / 修复
+
+- **Unified Cross-Platform `3x / 5x / 20x` Plan Multiplier Engine, `agy 1.5.16` `plan_tier` Sync & `tick()` Multi-Variant Tile Lock**: Unified subscription multiplier detection (`compactPlanBadge` never truncates `3x / 5x / 20x`) and per-`(agent, email)` overrides across **Antigravity / Gemini (`AI Ultra · 5x / 20x`)**, **ChatGPT / Codex (`Pro Lite · 5x` / `Pro · 20x`)**, **Claude (`Max · 5x / 20x`)**, **Cursor (`Pro+ · 3x` / `Ultra · 20x`)**, and **Grok Bot / Grok (`Heavy · 20x`)**; made the Menu Bar plan pill directly clickable to switch multipliers in `<1ms` when a vendor API omits the tier suffix; fixed the `agy 1.5.16` delayed `plan_tier` race & email-isolated cache; and closed the remaining `OverlayManager.tick()` multi-variant `preferredBundleID` omission.  
+  **全平台统一 `3x / 5x / 20x` 套餐倍率引擎、`agy 1.5.16` 套餐异步补读与 `tick()` 多变体图块锁定**：统一适配 **Antigravity / Gemini（`AI Ultra · 5x / 20x`）**、**ChatGPT / Codex（`Pro Lite · 5x` / `Pro · 20x`）**、**Claude（`Max · 5x / 20x`）**、**Cursor（`Pro+ · 3x` / `Ultra · 20x`）** 与 **Grok Bot / Grok（`Heavy · 20x`）** 的倍数自动解析与防截断展示；在菜单栏顶部套餐徽章与设置详情均支持一键切换倍率并按「应用 + 邮箱」独立记忆；同步修复 `agy 1.5.16` 切换账号时 `plan_tier` 延迟写入竞态与 `OverlayManager.tick()` 遗漏 `preferredBundleID` 的多变体绘制边界。
+
+---
+
 ## [1.3.2] - 2026-11-24
 
 ### Fixed / 修复

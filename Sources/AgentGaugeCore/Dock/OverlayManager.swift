@@ -389,7 +389,12 @@ public final class OverlayManager {
                     badgeScale: CGFloat(badgeScale),
                     badgeOpacity: CGFloat(badgeOpacity)
                 )
-                nativeChannel.draw(agentID: id, snapshot: snap, params: params)
+                nativeChannel.draw(
+                    agentID: id,
+                    snapshot: snap,
+                    params: params,
+                    preferredBundleID: st.lastBundleID
+                )
             } else {
                 motionStates[id] = st
             }

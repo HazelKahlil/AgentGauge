@@ -1243,39 +1243,43 @@ private struct AgentDetailPopover: View {
                 }
             }
 
-            if agentID == .antigravity {
-                if let tier = liveSnap?.planTier, tier.lowercased().contains("ultra") {
-                    HStack(spacing: 6) {
-                        Text("Ultra 档位")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        HStack(spacing: 2.5) {
-                            ForEach(AntigravityUltraMultiplier.allCases) { mult in
-                                let isSelected = (store.antigravityUltraMultiplier == mult)
-                                Button {
-                                    store.antigravityUltraMultiplier = mult
-                                } label: {
-                                    Text(mult.shortTitle)
-                                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                                        .padding(.horizontal, 7)
-                                        .frame(height: 19)
-                                        .background(isSelected ? accent.opacity(0.18) : Color.clear, in: Capsule())
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(isSelected ? accent.opacity(0.40) : Color.clear, lineWidth: 0.7)
-                                        )
-                                        .contentShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .focusEffectDisabled()
+            if agentID.supportsPlanMultiplierBadge, liveSnap?.planTier != nil {
+                let email = liveSnap?.accountEmail
+                let currentMult = store.planMultiplier(for: agentID, email: email)
+                HStack(spacing: 6) {
+                    Text("套餐倍率")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    HStack(spacing: 2.5) {
+                        ForEach(agentID.supportedMultiplierChoices) { mult in
+                            let isSelected = (currentMult == mult)
+                            Button {
+                                store.setPlanMultiplier(mult, for: agentID, email: email)
+                            } label: {
+                                Text(mult.shortTitle)
+                                    .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                    .padding(.horizontal, 7)
+                                    .frame(height: 19)
+                                    .background(isSelected ? accent.opacity(0.18) : Color.clear, in: Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(isSelected ? accent.opacity(0.40) : Color.clear, lineWidth: 0.7)
+                                    )
+                                    .contentShape(Capsule())
                             }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
                         }
-                        .padding(2)
-                        .background(Color.primary.opacity(0.055), in: Capsule())
                     }
+                    .padding(2)
+                    .background(Color.primary.opacity(0.055), in: Capsule())
                 }
+                .help("按当前应用与登录账号独立记忆套餐倍率（自动 / 3x / 5x / 20x），切换账号自动联动")
+            }
+
+            if agentID == .antigravity {
 
                 Divider().opacity(0.45)
                 VStack(alignment: .leading, spacing: 5) {
