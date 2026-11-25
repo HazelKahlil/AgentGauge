@@ -102,6 +102,10 @@ updater_src = (root / "Sources/AgentGaugeCore/UpdateManager.swift").read_text(en
 if "isFromSignedFeed: false" in updater_src:
     failures.append("UpdateManager.swift allows unsigned update fallback (`isFromSignedFeed: false`)")
 
+popover_src = (root / "Sources/AgentGaugeApp/MenuBarPopoverView.swift").read_text(encoding="utf-8")
+if ".menuStyle(.borderlessButton)" in popover_src:
+    failures.append("MenuBarPopoverView.swift uses .menuStyle(.borderlessButton) which strips PlanTierBadgePill dark mineral background on macOS")
+
 tracked_files = subprocess.check_output(["git", "ls-files"], cwd=root, text=True).splitlines()
 for tf in tracked_files:
     if tf.endswith(".key") or tf.endswith(".dmg") or tf.endswith(".zip"):

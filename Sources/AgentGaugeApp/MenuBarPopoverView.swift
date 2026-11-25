@@ -271,26 +271,14 @@ struct MenuBarPopoverView: View {
                                     if agentID.supportsPlanMultiplierBadge,
                                        let email = snap?.accountEmail, !email.isEmpty {
                                         let currentMult = store.planMultiplier(for: agentID, email: email)
-                                        Menu {
-                                            ForEach(agentID.supportedMultiplierChoices) { mult in
-                                                Button {
-                                                    store.setPlanMultiplier(mult, for: agentID, email: email)
-                                                } label: {
-                                                    let labelText = mult == .auto ? "自动识别" : "\(mult.shortTitle) 倍档位"
-                                                    if currentMult == mult {
-                                                        Label(labelText, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(labelText)
-                                                    }
-                                                }
-                                            }
-                                        } label: {
-                                            PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
+                                        InteractivePlanBadgeButton(
+                                            text: planBadge,
+                                            accentColor: waterNSColor,
+                                            choices: agentID.supportedMultiplierChoices,
+                                            currentChoice: currentMult
+                                        ) { mult in
+                                            store.setPlanMultiplier(mult, for: agentID, email: email)
                                         }
-                                        .menuStyle(.borderlessButton)
-                                        .menuIndicator(.hidden)
-                                        .fixedSize()
-                                        .help("点击切换当前账号套餐倍率（按应用 + 账号独立记忆）")
                                     } else {
                                         PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
                                     }
@@ -650,5 +638,86 @@ struct MenuBarPopoverView: View {
             .focusEffectDisabled()
             .help(helpText)
         }
+    }
+}
+
+/// Clickable anodized mineral badge that preserves 100% of `PlanTierBadgePill`'s dark gradient & metallic rim
+/// (avoids macOS SwiftUI `Menu(.borderlessButton)` stripping custom backgrounds into invisible light text)
+/// and pops a native AppKit `NSMenu` directly underneath without dismissing the Menu Bar popover.
+private struct InteractivePlanBadgeButton: View {
+    let text: String
+    let accentColor: NSColor
+    let choices: [PlanMultiplierChoice]
+    let currentChoice: PlanMultiplierChoice
+    let onSelect: (PlanMultiplierChoice) -> Void
+
+    @State private var isHovering = false
+    @State private var anchorView: NSView?
+
+    var body: some View {
+        Button {
+            popNativeMenu()
+        } label: {
+            PlanTierBadgePill(text: text, accentColor: accentColor, size: .regular)
+                .brightness(isHovering ? 0.05 : 0)
+                .scaleEffect(isHovering ? 1.02 : 1.0)
+                .animation(.easeOut(duration: 0.14), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .onHover { isHovering = $0 }
+        .background(BadgeMenuAnchorView { view in
+            if anchorView !== view {
+                anchorView = view
+            }
+        })
+        .help("点击切换当前账号套餐倍率（按应用 + 账号独立记忆）")
+    }
+
+    private func popNativeMenu() {
+        guard let anchorView else { return }
+        final class MenuActionProxy: NSObject {
+            let choices: [PlanMultiplierChoice]
+            let onSelect: (PlanMultiplierChoice) -> Void
+            init(choices: [PlanMultiplierChoice], onSelect: @escaping (PlanMultiplierChoice) -> Void) {
+                self.choices = choices
+                self.onSelect = onSelect
+            }
+            @objc func pick(_ sender: NSMenuItem) {
+                guard sender.tag >= 0, sender.tag < choices.count else { return }
+                onSelect(choices[sender.tag])
+            }
+        }
+        let proxy = MenuActionProxy(choices: choices, onSelect: onSelect)
+        let menu = NSMenu(title: "套餐倍率")
+        for (idx, choice) in choices.enumerated() {
+            let title = (choice == .auto) ? "自动识别" : "\(choice.shortTitle) 倍档位"
+            let item = NSMenuItem(title: title, action: #selector(MenuActionProxy.pick(_:)), keyEquivalent: "")
+            item.target = proxy
+            item.tag = idx
+            item.state = (choice == currentChoice) ? .on : .off
+            menu.addItem(item)
+        }
+        withExtendedLifetime(proxy) {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: anchorView.bounds.height + 4), in: anchorView)
+        }
+    }
+}
+
+private final class FlippedBadgeAnchorNSView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+private struct BadgeMenuAnchorView: NSViewRepresentable {
+    let onResolve: (NSView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let v = FlippedBadgeAnchorNSView(frame: .zero)
+        DispatchQueue.main.async { onResolve(v) }
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { onResolve(nsView) }
     }
 }

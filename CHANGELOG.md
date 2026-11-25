@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.5] - 2026-11-25
+
+### Fixed / 修复
+
+- **Restored Anodized Mineral Plan Nameplate Contrast in Menu Bar Popover**: Replaced SwiftUI `Menu(.borderlessButton)` around `PlanTierBadgePill` (which stripped the dark smoked-mineral capsule background on macOS 26 Tahoe, leaving washed-out white text) with a native `.buttonStyle(.plain)` + AppKit `NSMenu` dropdown (`InteractivePlanBadgeButton`) so `Pro Lite · 5x` / `AI Ultra · 20x` nameplates render at full contrast while remaining 1-click switchable.  
+  **修复菜单栏套餐铭牌透明看不清的问题**：移除会剥离胶囊深色矿石背景的 SwiftUI `Menu(.borderlessButton)`，改用原生 `.buttonStyle(.plain)` 保留完整深色阳极氧化矿石铭牌并在点击时直接弹出原生 `NSMenu`，兼顾高对比度与一键倍率切换。
+
+---
+
 ## [1.3.4] - 2026-11-25
 
 ### Security & Reliability / 安全与可靠性加固

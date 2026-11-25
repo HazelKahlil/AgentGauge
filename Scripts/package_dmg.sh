@@ -132,7 +132,7 @@ ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${OTA_ZIP_PATH}"
 ZIP_SHA256=$(shasum -a 256 "${OTA_ZIP_PATH}" | awk '{print $1}')
 
 # 3. Cryptographically sign OTA Manifest (`Website/updates/latest.json`) with Ed25519 Private Key
-RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 全链路 Ed25519 验签原子回滚与多账号隔离加固}"
+RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 修复菜单栏套餐矿石铭牌透明发虚问题}"
 SHORT_VERSION="${SHORT_VERSION}" \
 BUILD_VERSION="${BUILD_VERSION}" \
 ZIP_SHA256="${ZIP_SHA256}" \
@@ -170,9 +170,8 @@ let manifest: [String: Any] = [
     "urgency": "recommended",
     "title": title,
     "notes": [
-        "全链路强制 Ed25519 数字签名与 SHA-256 验签（覆盖 CDN、GitHub 回退源与一行安装脚本），并升级为内核级 renamex_np 原子交换 + 启动失败自动回滚",
-        "修复并发网页刷新队列竞态、Dock bootstrap 端口泄漏及 Claude Keychain 阻塞风险，将 Dock Mach 通信迁出主线程并补齐失败补偿释放",
-        "严格加固多账号、单模型池与跨产品隔离（Cursor ↔ Grok Bot 精确槽位与双有效重置时间校验、Antigravity 缺池不串池、Gemini 桌面版隔离 CLI 缓存、全量过滤 1970 哨兵时间）"
+        "修复菜单栏套餐铭牌（Pro Lite · 5x / AI Ultra · 20x 等）在 macOS 26 Tahoe 上因无边框 Menu 剥离底色而变透明看不清的问题，恢复完整深色矿石阳极氧化质感并支持原生菜单一键切换倍率",
+        "包含 v1.3.4 全部安全与并发加固（全链路 Ed25519 强制验签、renamex_np 原子交换自动回滚、离主线程 Dock IPC 与严格多账号隔离）"
     ],
     "zipUrl": "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip",
     "fallbackZipUrl": "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",

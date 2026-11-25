@@ -1293,7 +1293,26 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.3.4", id: "v1-3-4", date: "2026-11-25", latest: true,
+      ver: "v1.3.5", id: "v1-3-5", date: "2026-11-25", latest: true,
+      title: [
+        "Restored full-contrast mineral plan nameplate in Menu Bar popover",
+        "修复菜单栏套餐矿石铭牌透明发虚问题（保留完整深底与一键菜单）",
+      ],
+      summary: [
+        "Replaces SwiftUI borderless Menu wrapping on the Menu Bar plan badge with a full-fidelity plain button + native NSMenu popup so plan multiplier nameplates stay crisp on macOS 26 Tahoe.",
+        "移除 macOS 26 Tahoe 上会剥离胶囊底色的无边框 Menu 包装，改用原生高对比矿石铭牌按钮配合 NSMenu 弹出菜单，视觉与悬停卡片 100% 统一。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>Crisp Anodized Mineral Plan Nameplate (<code>InteractivePlanBadgeButton</code>)</b>: Fixed <code>Pro Lite · 5x</code> / <code>AI Ultra · 20x</code> badges appearing transparent inside the Menu Bar popover on macOS 26 Tahoe while preserving 1-click multiplier switching.",
+            "<b>菜单栏套餐铭牌满血高对比渲染</b>：彻底解决 <code>Pro Lite · 5x</code> / <code>AI Ultra · 20x</code> 徽章背景变透明看不清的问题，同时保持点击原地弹出原生菜单一键切换倍率。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.3.4", id: "v1-3-4", date: "2026-11-25",
       title: [
         "End-to-end Ed25519 OTA & atomic rollback, off-main-thread Mach IPC & strict account isolation",
         "全链路 Ed25519 验签与内核原子回滚、离主线程 Dock IPC 与严格多账号隔离加固",
