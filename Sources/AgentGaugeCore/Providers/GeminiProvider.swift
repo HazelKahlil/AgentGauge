@@ -1,23 +1,37 @@
 import AppKit
 import Foundation
 
-private final class GeminiSnapshotCache: @unchecked Sendable {
+enum GeminiSnapshotSource: Sendable, Equatable {
+    case consumerWeb
+    case developerCLI
+}
+
+final class GeminiSnapshotCache: @unchecked Sendable {
     static let shared = GeminiSnapshotCache()
     private let lock = NSLock()
     private var cached: QuotaSnapshot?
+    private var cachedSource: GeminiSnapshotSource?
     private var cachedAt: Date = .distantPast
 
     func invalidate() {
         lock.lock()
         cached = nil
+        cachedSource = nil
         cachedAt = .distantPast
         lock.unlock()
     }
 
-    func get(maxAge: TimeInterval, isWorking: Bool) -> QuotaSnapshot? {
+    func get(maxAge: TimeInterval, isWorking: Bool, allowDeveloperCLI: Bool) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
         guard let c = cached, Date().timeIntervalSince(cachedAt) <= maxAge else {
+            return nil
+        }
+        // Strict product isolation on cache hit: once Gemini.app is installed, NEVER serve a previously cached Gemini CLI snapshot!
+        if cachedSource == .developerCLI && !allowDeveloperCLI {
+            cached = nil
+            cachedSource = nil
+            cachedAt = .distantPast
             return nil
         }
         return QuotaSnapshot(
@@ -36,9 +50,10 @@ private final class GeminiSnapshotCache: @unchecked Sendable {
         )
     }
 
-    func set(_ snap: QuotaSnapshot) {
+    func set(_ snap: QuotaSnapshot, source: GeminiSnapshotSource) {
         lock.lock()
         cached = snap
+        cachedSource = source
         cachedAt = Date()
         lock.unlock()
     }
@@ -63,7 +78,11 @@ public struct GeminiProvider: UsageProvider {
         }
         let isDesktopInstalled = AgentID.gemini.isInstalledOnMac
 
-        if let recent = GeminiSnapshotCache.shared.get(maxAge: 300.0, isWorking: isRunning) {
+        if let recent = GeminiSnapshotCache.shared.get(
+            maxAge: 300.0,
+            isWorking: isRunning,
+            allowDeveloperCLI: !isDesktopInstalled
+        ) {
             return recent
         }
 
@@ -72,18 +91,18 @@ public struct GeminiProvider: UsageProvider {
         if verifiedRaw.contains(AgentID.gemini.rawValue) || !isDesktopInstalled {
             if await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: AgentID.gemini.cookieDomainSuffixes),
                let webSnap = await fetchFromGeminiUsagePage(isWorking: isRunning) {
-                GeminiSnapshotCache.shared.set(webSnap)
+                GeminiSnapshotCache.shared.set(webSnap, source: .consumerWeb)
                 return webSnap
             }
         } else if await WebUsageFetcher.shared.hasCookies(matchingDomainSuffixes: ["gemini.google.com"]),
                   let webSnap = await fetchFromGeminiUsagePage(isWorking: isRunning) {
-            GeminiSnapshotCache.shared.set(webSnap)
+            GeminiSnapshotCache.shared.set(webSnap, source: .consumerWeb)
             return webSnap
         }
 
         // 2. Only if standalone `Gemini.app` is NOT installed, allow Gemini CLI (`~/.gemini/oauth_creds.json`)
         if !isDesktopInstalled, let cliSnap = await fetchFromGeminiCLIOAuth(isWorking: isRunning) {
-            GeminiSnapshotCache.shared.set(cliSnap)
+            GeminiSnapshotCache.shared.set(cliSnap, source: .developerCLI)
             return cliSnap
         }
 
@@ -231,13 +250,7 @@ public struct GeminiProvider: UsageProvider {
         }
 
         let resolvedEmail = (json["email"] as? String)?.nilIfEmpty
-        var resolvedPlan = (json["planTier"] as? String)?.nilIfEmpty
-        if resolvedPlan?.lowercased() == "google ai ultra" {
-            let mult = AntigravityProvider.currentSavedUltraMultiplier(forEmail: resolvedEmail)
-            if mult != .auto {
-                resolvedPlan = "Google AI Ultra (\(mult.rawValue))"
-            }
-        }
+        let resolvedPlan = (json["planTier"] as? String)?.nilIfEmpty
 
         return QuotaSnapshot(
             agentID: .gemini,
@@ -290,10 +303,6 @@ public struct GeminiProvider: UsageProvider {
                 return nil
             }
 
-            let isoFrac = ISO8601DateFormatter()
-            isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let isoStd = ISO8601DateFormatter()
-
             struct ParsedCLIBucket {
                 let label: String
                 let remaining: Double
@@ -308,7 +317,7 @@ public struct GeminiProvider: UsageProvider {
                 let cleanLabel = Self.cleanGeminiModelLabel(rawModel)
                 guard !seenLabels.contains(cleanLabel) else { continue }
                 seenLabels.insert(cleanLabel)
-                let resetDate = (b["resetTime"] as? String).flatMap { isoFrac.date(from: $0) ?? isoStd.date(from: $0) }
+                let resetDate = QuotaSnapshot.parseValidResetDate(from: b["resetTime"])
                 parsed.append(ParsedCLIBucket(
                     label: cleanLabel,
                     remaining: max(0, min(100, frac * 100.0)),

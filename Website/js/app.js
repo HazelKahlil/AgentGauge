@@ -180,10 +180,16 @@
 
   /* ------------------------------------------------------------------ i18n (English primary by default) */
   let lang = "en";
+  const safeGetStorage = (key) => {
+    try { return window.localStorage.getItem(key); } catch (_) { return null; }
+  };
+  const safeSetStorage = (key, val) => {
+    try { window.localStorage.setItem(key, val); } catch (_) {}
+  };
   const pickLang = () => {
     const q = new URLSearchParams(location.search).get("lang");
     if (q === "zh" || q === "en") return q;
-    const s = localStorage.getItem("ag-lang-v2");
+    const s = safeGetStorage("ag-lang-v2");
     if (s === "zh" || s === "en") return s;
     return "en";
   };
@@ -202,7 +208,7 @@
     document.title = t("meta.title");
     const md = $('meta[name="description"]');
     if (md) md.setAttribute("content", t("meta.desc"));
-    if (persist) localStorage.setItem("ag-lang-v2", lang);
+    if (persist) safeSetStorage("ag-lang-v2", lang);
     langListeners.forEach((fn) => fn());
   }
   $$("[data-lang-toggle]").forEach((b) => b.addEventListener("click", () => applyLang(lang === "zh" ? "en" : "zh", true)));
@@ -1287,7 +1293,34 @@
   /* ================================================================== CHANGELOG (Keep-a-Changelog + SemVer) */
   const CHANGELOG_ENTRIES = [
     {
-      ver: "v1.3.3", id: "v1-3-3", date: "2026-11-25", latest: true,
+      ver: "v1.3.4", id: "v1-3-4", date: "2026-11-25", latest: true,
+      title: [
+        "End-to-end Ed25519 OTA & atomic rollback, off-main-thread Mach IPC & strict account isolation",
+        "全链路 Ed25519 验签与内核原子回滚、离主线程 Dock IPC 与严格多账号隔离加固",
+      ],
+      summary: [
+        "Fixes all 18 findings from a full cross-model codebase security & reliability audit: enforces Ed25519 verification on every update path, upgrades installs to kernel-atomic renamex_np swap with auto-rollback, fixes WebUsageFetcher concurrency & Mach bootstrap port leaks, and hardens account/pool/product isolation.",
+        "针对全仓深度代码审查一次性修复 18 项安全与稳定性隐患：全链路强制 Ed25519 验签与内核级原子替换回滚、修复网页刷新队列竞态与 Mach 端口泄漏、彻底加固多账号/多池/跨产品隔离与发布门禁。",
+      ],
+      groups: [
+        ["fixed", [
+          [
+            "<b>End-to-End Ed25519 Verification &amp; Kernel-Atomic <code>renamex_np</code> Rollback</b>: GitHub fallback and <code>install.sh</code> now strictly require Ed25519-signed <code>latest.json</code> + SHA-256 + bundle version/signature verification; OTA, terminal, and DMG upgraders perform same-volume atomic swaps and roll back automatically if launch fails.",
+            "<b>全链路 Ed25519 强制验签与内核原子回滚</b>：GitHub 回退源与 <code>install.sh</code> 统一执行 Ed25519 + SHA-256 + 解包元数据校验；OTA、终端安装器与 DMG 助手统一采用同卷 <code>renamex_np</code> 原子交换并在启动异常时自动回滚。",
+          ],
+          [
+            "<b>Zero-Stall <code>WebUsageFetcher</code> Queue, Off-Main-Thread Dock IPC &amp; Port Leak Fix</b>: Eliminated FIFO handoff races &amp; stale JS callbacks in <code>WebUsageFetcher</code>, fixed <code>TASK_BOOTSTRAP_PORT</code> send-right leak in <code>NativeDockTile.c</code>, moved Dock Mach IPC to a dedicated serial queue with <code>pendingReleases</code> compensation, and added a <code>2.5s</code> timeout on Claude Keychain probes.",
+            "<b>网页队列防卡死、离主线程 Dock IPC 与端口泄漏修复</b>：消除 <code>WebUsageFetcher</code> 续体丢失与旧回调串台；修复 <code>NativeDockTile.c</code> bootstrap 端口泄漏并将 Dock IPC 迁出主线程配合失败补偿释放；为 Claude Keychain 探针增加 <code>2.5s</code> 硬超时。",
+          ],
+          [
+            "<b>Strict Account, Pool &amp; Cross-Product Isolation</b>: Unified <code>Cursor</code> ↔ <code>Grok Bot</code> sharing checks (exact slot/email + both valid reset epochs within <code>&le;300s</code>), identity-keyed caches &amp; transient-error guards, fixed Antigravity single-pool fallback &amp; Gemini CLI cache tagging, unified <code>1970</code> reset-date sanitization, and guarded website <code>localStorage</code> access.",
+            "<b>严格多账号、模型池与跨产品隔离</b>：<code>Cursor</code> ↔ <code>Grok Bot</code> 共享强制要求精确槽位/邮箱且双有效重置时间差 <code>&le;300s</code>；缓存与报错保留严格按账号隔离；修复 Antigravity 缺池借用与 Gemini CLI 缓存越界；全量过滤 <code>1970</code> 哨兵时间，并修复官网无痕模式存储异常。",
+          ],
+        ]],
+      ],
+    },
+    {
+      ver: "v1.3.3", id: "v1-3-3", date: "2026-11-25",
       title: [
         "Unified 3x/5x/20x plan multipliers, zero-IPC Dock hover optimization & automated release gates",
         "全平台 3x / 5x / 20x 套餐倍率引擎、零阻塞 Dock 悬停优化与自动化测试门禁",

@@ -268,8 +268,8 @@ struct MenuBarPopoverView: View {
                                     .lineLimit(1)
 
                                 if let planBadge {
-                                    if agentID.supportsPlanMultiplierBadge {
-                                        let email = snap?.accountEmail
+                                    if agentID.supportsPlanMultiplierBadge,
+                                       let email = snap?.accountEmail, !email.isEmpty {
                                         let currentMult = store.planMultiplier(for: agentID, email: email)
                                         Menu {
                                             ForEach(agentID.supportedMultiplierChoices) { mult in
@@ -290,7 +290,7 @@ struct MenuBarPopoverView: View {
                                         .menuStyle(.borderlessButton)
                                         .menuIndicator(.hidden)
                                         .fixedSize()
-                                        .help("点击切换当前账号套餐倍率（按账号独立记忆）")
+                                        .help("点击切换当前账号套餐倍率（按应用 + 账号独立记忆）")
                                     } else {
                                         PlanTierBadgePill(text: planBadge, accentColor: waterNSColor, size: .regular)
                                     }
@@ -375,17 +375,25 @@ struct MenuBarPopoverView: View {
                                 .font(.system(size: 22, weight: .light))
                                 .foregroundStyle(.tertiary)
 
-                            Text(snap?.errorMessage ?? (snap?.requiresWebLogin == true ? "尚未连接 \(agentID.shortName) 账号" : "正在探测本地状态…"))
+                            Text(snap?.errorMessage ?? agentID.localAuthGuidance ?? (snap?.requiresWebLogin == true ? "尚未连接 \(agentID.shortName) 账号" : "正在探测本地状态…"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 10)
 
-                            if agentID.webLoginURL != nil {
+                            if agentID.usesWebKitSessionForQuota {
                                 popoverGlassCapsuleButton(prominent: true) {
                                     onOpenLogin(agentID)
                                 } label: {
                                     Text("立即登录连接")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                }
+                            } else if let appURL = agentID.installedAppURL, agentID == .grokbot || agentID == .antigravity {
+                                popoverGlassCapsuleButton(prominent: true) {
+                                    NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
+                                } label: {
+                                    Text("打开 \(agentID.shortName) 登录")
                                         .font(.system(size: 11, weight: .semibold))
                                         .padding(.horizontal, 6)
                                 }

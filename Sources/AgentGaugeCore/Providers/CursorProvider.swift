@@ -10,25 +10,39 @@ public struct CursorLocalAuth: Sendable {
     public let signUpType: String?
     public let authId: String?
     public let displayName: String?
+    public var identityKey: String {
+        if let aid = authId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty {
+            return "id:\(aid)"
+        }
+        if let em = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty {
+            return "email:\(em)"
+        }
+        if let tok = accessToken?.nilIfEmpty {
+            return "tok:\(tok.prefix(16))"
+        }
+        return "none"
+    }
 }
 
 private final class CursorSnapshotCache: @unchecked Sendable {
     static let shared = CursorSnapshotCache()
     private let lock = NSLock()
     private var cached: QuotaSnapshot?
+    private var cachedIdentity: String?
     private var cachedAt: Date = .distantPast
 
     func invalidate() {
         lock.lock()
         cached = nil
+        cachedIdentity = nil
         cachedAt = .distantPast
         lock.unlock()
     }
 
-    func get(isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
+    func get(identityKey: String, isAppRunning: Bool, isWorking: Bool) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
-        guard let snap = cached else { return nil }
+        guard let snap = cached, cachedIdentity == identityKey else { return nil }
         let now = Date()
         if let r = snap.resetsAt, now >= r {
             return nil
@@ -40,9 +54,10 @@ private final class CursorSnapshotCache: @unchecked Sendable {
         return snap
     }
 
-    func set(_ snap: QuotaSnapshot) {
+    func set(_ snap: QuotaSnapshot, identityKey: String) {
         lock.lock()
         cached = snap
+        cachedIdentity = identityKey
         cachedAt = Date()
         lock.unlock()
     }
@@ -50,18 +65,18 @@ private final class CursorSnapshotCache: @unchecked Sendable {
 
 private actor CursorAPISingleFlight {
     static let shared = CursorAPISingleFlight()
-    private var inFlight: Task<QuotaSnapshot?, Never>?
+    private var inFlightByIdentity: [String: Task<QuotaSnapshot?, Never>] = [:]
 
-    func run(operation: @Sendable @escaping () async -> QuotaSnapshot?) async -> QuotaSnapshot? {
-        if let existing = inFlight {
+    func run(identityKey: String, operation: @Sendable @escaping () async -> QuotaSnapshot?) async -> QuotaSnapshot? {
+        if let existing = inFlightByIdentity[identityKey] {
             return await existing.value
         }
         let task = Task {
             await operation()
         }
-        inFlight = task
+        inFlightByIdentity[identityKey] = task
         let res = await task.value
-        inFlight = nil
+        inFlightByIdentity.removeValue(forKey: identityKey)
         return res
     }
 }
@@ -82,7 +97,12 @@ public struct CursorProvider: UsageProvider {
                 !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
             }
         }
-        if let recent = CursorSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking) {
+        // Always read current local auth identity BEFORE checking cache so account switches bust stale snapshots immediately!
+        let localAuth = Self.readLocalAuthState()
+        let identityKey = localAuth.identityKey
+
+        if localAuth.accessToken != nil,
+           let recent = CursorSnapshotCache.shared.get(identityKey: identityKey, isAppRunning: isAppRunning, isWorking: isWorking) {
             return QuotaSnapshot(
                 agentID: .cursor,
                 remainingPercent: recent.remainingPercent,
@@ -99,11 +119,9 @@ public struct CursorProvider: UsageProvider {
             )
         }
 
-        let localAuth = Self.readLocalAuthState()
-
-        // 1. Primary path: Direct Cursor Desktop API (zero WebView, deduplicated across Cursor + Grok Bot!)
+        // 1. Primary path: Direct Cursor Desktop API (zero WebView, deduplicated per account identity!)
         if let token = localAuth.accessToken {
-            if let snapshot = await CursorAPISingleFlight.shared.run(operation: {
+            if let snapshot = await CursorAPISingleFlight.shared.run(identityKey: identityKey, operation: {
                 if let s = await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking) {
                     return s
                 }
@@ -115,33 +133,10 @@ public struct CursorProvider: UsageProvider {
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 return await fetchFromDesktopAPI(auth: localAuth, accessToken: token, isWorking: isWorking)
             }) {
-                CursorSnapshotCache.shared.set(snapshot)
+                CursorSnapshotCache.shared.set(snapshot, identityKey: identityKey)
                 return snapshot
             }
-            // Unified Anysphere/xAI offline cross-fallback ONLY when verified as the same linked account slot
-            if localAuth.signUpType?.lowercased() == "grok",
-               let sandCache = GrokBotProvider.readSandPersistenceUsage(matchingEmailFrom: localAuth),
-               (sandCache.activeSlot == localAuth.authId || sandCache.activeSlot == nil || sandCache.activeSlot?.lowercased().hasPrefix("grok|") == true) {
-                return QuotaSnapshot(
-                    agentID: .cursor,
-                    remainingPercent: sandCache.remainingPercent,
-                    accountEmail: localAuth.email ?? sandCache.email,
-                    planTier: Self.formatCursorPlan(rawPlan: localAuth.membershipType, isMergedGrok: true) ?? sandCache.planTier,
-                    primaryLabel: "Cursor",
-                    resetsAt: sandCache.resetsAt,
-                    windows: [
-                        QuotaWindow(
-                            label: "周期总额度 (xAI 互通缓存)",
-                            remainingPercent: sandCache.remainingPercent,
-                            resetsAt: sandCache.resetsAt,
-                            isPrimary: true
-                        )
-                    ],
-                    isWorking: isWorking,
-                    sourceDescription: "Cursor 本地账号"
-                )
-            }
-            // Local token exists -> transient network issue, NEVER set requiresWebLogin=true (preserves last valid quota!)
+            // Local token exists -> transient network issue; never cross-borrow Grok Bot without verified live reset-epoch agreement!
             return QuotaSnapshot(
                 agentID: .cursor,
                 remainingPercent: nil,
@@ -150,7 +145,7 @@ public struct CursorProvider: UsageProvider {
                 isWorking: isWorking,
                 sourceDescription: "Cursor 本地账号",
                 requiresWebLogin: false,
-                errorMessage: "Cursor 接口网络波动（已保留上次额度）"
+                errorMessage: "Cursor 接口网络波动（已保留同账号上次额度）"
             )
         }
 
@@ -286,14 +281,8 @@ public struct CursorProvider: UsageProvider {
         let totalRem = max(0, min(100, 100.0 - usedPct))
 
         // Prefer exact quota reset timestamp (`includedUsageResetsAt`) over monthly billing date (`billingCycleEnd`)
-        let resetRaw = Self.parseDouble(planInfoDict?["includedUsageResetsAt"])
-            ?? Self.parseDouble(json["billingCycleEnd"])
-        var resetsAt: Date? = nil
-        if let endMs = resetRaw, endMs > 1_000_000_000_000 {
-            resetsAt = Date(timeIntervalSince1970: endMs / 1000.0)
-        } else if let endSec = resetRaw, endSec > 1_000_000_000 {
-            resetsAt = Date(timeIntervalSince1970: endSec)
-        }
+        let resetsAt = QuotaSnapshot.parseValidResetDate(from: planInfoDict?["includedUsageResetsAt"])
+            ?? QuotaSnapshot.parseValidResetDate(from: json["billingCycleEnd"])
 
         let mainTitle = isWeeklyPeriod ? "周总额度" : "周期总额度"
         var windows: [QuotaWindow] = [

@@ -106,17 +106,19 @@ public final class UpdateManager: ObservableObject {
     private var periodicTimer: Timer?
     private var diskWatchTimer: Timer?
     private let launchedExecutableInode: ino_t
+    private let launchedTeamIdentifier: String?
     private var isPerformingInstall = false
+    private var checkGeneration: UInt64 = 0
 
     public var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3.3"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3.4"
     }
 
     public var currentBuild: Int {
         if let raw = Bundle.main.infoDictionary?["CFBundleVersion"] as? String, let n = Int(raw) {
             return n
         }
-        return 133
+        return 134
     }
 
     private init() {
@@ -133,6 +135,7 @@ public final class UpdateManager: ObservableObject {
         } else {
             self.launchedExecutableInode = 0
         }
+        self.launchedTeamIdentifier = Self.signingTeamIdentifier(for: Bundle.main.bundleURL)
     }
 
     /// Terminates any older lingering `com.kahlil.AgentGauge` background instance (e.g. `v1.1.0–v1.2.1`) when a newer bundle is opened.
@@ -202,7 +205,10 @@ public final class UpdateManager: ObservableObject {
 
         let bundlePath = Bundle.main.bundleURL.path
         guard bundlePath.hasSuffix(".app"),
-              Self.verifyExtractedBundle(at: Bundle.main.bundleURL) else {
+              Self.verifyExtractedBundle(
+                  at: Bundle.main.bundleURL,
+                  expectedTeamIdentifier: launchedTeamIdentifier
+              ) else {
             return
         }
 
@@ -225,12 +231,16 @@ public final class UpdateManager: ObservableObject {
     // MARK: - Remote Update Check (Cloudflare Signed Feed -> GitHub Releases API Fallback)
 
     public func checkForUpdates(userInitiated: Bool = true) async {
+        guard !isPerformingInstall else { return }
         switch state {
         case .checking, .downloading, .installing:
             return
         default:
             break
         }
+
+        checkGeneration &+= 1
+        let myGen = checkGeneration
 
         if userInitiated {
             state = .checking
@@ -239,8 +249,19 @@ public final class UpdateManager: ObservableObject {
         let curVer = currentVersion
         let curBuild = currentBuild
 
+        func canCommitCheckResult() -> Bool {
+            guard !isPerformingInstall, myGen == checkGeneration else { return false }
+            switch state {
+            case .downloading, .installing:
+                return false
+            default:
+                return true
+            }
+        }
+
         // 1. Primary: Cloudflare Global/China CDN Signed `latest.json`
         if let manifest = await Self.fetchPrimarySignedFeed() {
+            guard canCommitCheckResult() else { return }
             if Self.isRemoteNewer(
                 remoteVersion: manifest.version,
                 remoteBuild: manifest.build,
@@ -255,8 +276,9 @@ public final class UpdateManager: ObservableObject {
             return
         }
 
-        // 2. Fallback: Official GitHub Releases API
+        // 2. Fallback: Official GitHub Releases signed `latest.json` (same Ed25519 + SHA-256 trust anchor)
         if let ghManifest = await Self.fetchGitHubLatestRelease() {
+            guard canCommitCheckResult() else { return }
             if Self.isRemoteNewer(
                 remoteVersion: ghManifest.version,
                 remoteBuild: ghManifest.build,
@@ -264,14 +286,14 @@ public final class UpdateManager: ObservableObject {
                 currentBuild: curBuild
             ) {
                 state = .available(ghManifest)
-                AppLogger.shared.log("Update", "发现 GitHub 新版本 v\(ghManifest.version)")
+                AppLogger.shared.log("Update", "发现 GitHub 已签名新版本 v\(ghManifest.version)")
             } else if userInitiated || state.availableManifest != nil {
                 state = .upToDate(checkedAt: Date())
             }
             return
         }
 
-        if userInitiated {
+        if userInitiated, canCommitCheckResult() {
             state = .failed("暂时无法连接更新服务器，请稍后重试", retryable: nil)
         }
     }
@@ -281,6 +303,7 @@ public final class UpdateManager: ObservableObject {
     public func installUpdate(_ manifest: ReleaseManifest) async {
         guard !isPerformingInstall else { return }
         isPerformingInstall = true
+        checkGeneration &+= 1
         state = .downloading(manifest, progress: 0.02)
         AppLogger.shared.log("Update", "开始下载更新包 v\(manifest.version)…")
 
@@ -346,8 +369,12 @@ public final class UpdateManager: ObservableObject {
                 // Clear any extended quarantine attributes so relaunch is 100% seamless without Gatekeeper prompts
                 Self.clearQuarantineAttributes(at: appURL)
 
-                guard Self.verifyExtractedBundle(at: appURL) else {
-                    throw NSError(domain: "UpdateManager", code: 4, userInfo: [NSLocalizedDescriptionKey: "应用签名或包结构校验未通过"])
+                guard Self.verifyExtractedBundle(
+                    at: appURL,
+                    expectedVersion: manifest.version,
+                    expectedBuild: manifest.build
+                ) else {
+                    throw NSError(domain: "UpdateManager", code: 4, userInfo: [NSLocalizedDescriptionKey: "应用签名、版本或包结构校验未通过"])
                 }
                 return .success(appURL)
             } catch let err as NSError {
@@ -382,14 +409,30 @@ public final class UpdateManager: ObservableObject {
             return
         }
 
-        AppLogger.shared.log("Update", "校验通过，正在原子覆盖 \(targetAppPath) 并自动重启至 v\(manifest.version)…")
+        // Stage candidate bundle directly inside target parent directory so kernel-atomic RENAME_SWAP stays on the same volume!
+        let sameVolStageURL = URL(fileURLWithPath: parentDir)
+            .appendingPathComponent(".AgentGauge.ota-stage-\(getpid()).app", isDirectory: true)
+        do {
+            try? FileManager.default.removeItem(at: sameVolStageURL)
+            try FileManager.default.moveItem(at: stagedAppURL, to: sameVolStageURL)
+            try? FileManager.default.removeItem(at: stageDir)
+        } catch {
+            try? FileManager.default.removeItem(at: sameVolStageURL)
+            try? FileManager.default.removeItem(at: stageDir)
+            isPerformingInstall = false
+            state = .failed("准备同卷原子替换目录失败: \(error.localizedDescription)", retryable: manifest)
+            return
+        }
+
+        AppLogger.shared.log("Update", "校验通过，正在原子交换 \(targetAppPath) 并验证重启至 v\(manifest.version)…")
 
         let myPID = "\(getpid())"
         let swapScript = """
         OLD_PID="$1"
         STAGED_APP="$2"
         TARGET_APP="$3"
-        STAGE_ROOT="$4"
+        SWAP_HELPER="$STAGED_APP/Contents/MacOS/AgentGaugeCleanup"
+        INSTALLED_HELPER="$TARGET_APP/Contents/MacOS/AgentGaugeCleanup"
 
         i=0
         while kill -0 "$OLD_PID" 2>/dev/null && [ $i -lt 30 ]; do
@@ -401,27 +444,65 @@ public final class UpdateManager: ObservableObject {
           sleep 0.2
         fi
 
-        BACKUP_APP="${TARGET_APP}.backup.$$"
-        rm -rf "$BACKUP_APP" 2>/dev/null || true
+        SWAPPED=0
         if [ -d "$TARGET_APP" ]; then
-          if ! mv "$TARGET_APP" "$BACKUP_APP"; then
-            rm -rf "$STAGE_ROOT" 2>/dev/null || true
+          if [ -x "$SWAP_HELPER" ] && "$SWAP_HELPER" --atomic-swap "$STAGED_APP" "$TARGET_APP"; then
+            SWAPPED=1
+          else
+            # Fallback if swap helper missing: move existing to backup before moving staged in
+            BACKUP_APP="${TARGET_APP}.backup.$$"
+            rm -rf "$BACKUP_APP" 2>/dev/null || true
+            if mv "$TARGET_APP" "$BACKUP_APP" && mv "$STAGED_APP" "$TARGET_APP"; then
+              STAGED_APP="$BACKUP_APP"
+              SWAPPED=1
+            else
+              [ -d "$BACKUP_APP" ] && [ ! -d "$TARGET_APP" ] && mv "$BACKUP_APP" "$TARGET_APP" 2>/dev/null || true
+              rm -rf "$STAGED_APP" 2>/dev/null || true
+              exit 1
+            fi
+          fi
+        else
+          if ! mv "$STAGED_APP" "$TARGET_APP"; then
+            rm -rf "$STAGED_APP" 2>/dev/null || true
             exit 1
           fi
         fi
 
-        if mv "$STAGED_APP" "$TARGET_APP"; then
-          rm -rf "$BACKUP_APP" "$STAGE_ROOT" 2>/dev/null || true
-          /usr/bin/xattr -cr "$TARGET_APP" 2>/dev/null || true
-          touch "$TARGET_APP" 2>/dev/null || true
-          /usr/bin/open -n "$TARGET_APP"
-        else
-          if [ -d "$BACKUP_APP" ]; then
-            mv "$BACKUP_APP" "$TARGET_APP" 2>/dev/null || true
-          fi
-          rm -rf "$STAGE_ROOT" 2>/dev/null || true
-          exit 1
+        /usr/bin/xattr -cr "$TARGET_APP" 2>/dev/null || true
+        touch "$TARGET_APP" 2>/dev/null || true
+
+        # Verify new app actually launches and stays alive BEFORE deleting previous backup; rollback automatically on failure!
+        LAUNCH_OK=0
+        if /usr/bin/open -n "$TARGET_APP"; then
+          j=0
+          while [ $j -lt 25 ]; do
+            sleep 0.15
+            if pgrep -f "$TARGET_APP/Contents/MacOS/AgentGauge" >/dev/null 2>&1; then
+              LAUNCH_OK=1
+              break
+            fi
+            j=$((j + 1))
+          done
         fi
+
+        if [ "$LAUNCH_OK" -eq 1 ]; then
+          rm -rf "$STAGED_APP" 2>/dev/null || true
+          exit 0
+        fi
+
+        # Launch failed -> atomically roll back to the previous working bundle!
+        if [ "$SWAPPED" -eq 1 ] && [ -d "$STAGED_APP" ]; then
+          if [ -x "$INSTALLED_HELPER" ] && "$INSTALLED_HELPER" --atomic-swap "$STAGED_APP" "$TARGET_APP"; then
+            rm -rf "$STAGED_APP" 2>/dev/null || true
+          else
+            FAILED_APP="${TARGET_APP}.failed.$$"
+            mv "$TARGET_APP" "$FAILED_APP" 2>/dev/null || true
+            mv "$STAGED_APP" "$TARGET_APP" 2>/dev/null || true
+            rm -rf "$FAILED_APP" 2>/dev/null || true
+          fi
+          /usr/bin/open -n "$TARGET_APP" 2>/dev/null || true
+        fi
+        exit 1
         """
 
         let proc = Process()
@@ -432,9 +513,8 @@ public final class UpdateManager: ObservableObject {
             swapScript,
             "--",
             myPID,
-            stagedAppURL.path,
-            targetAppPath,
-            stageDir.path
+            sameVolStageURL.path,
+            targetAppPath
         ]
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
@@ -444,6 +524,7 @@ public final class UpdateManager: ObservableObject {
             try proc.run()
             NSApp.terminate(nil)
         } catch {
+            try? FileManager.default.removeItem(at: sameVolStageURL)
             isPerformingInstall = false
             state = .failed("启动更新替换进程失败: \(error.localizedDescription)", retryable: manifest)
         }
@@ -502,6 +583,44 @@ public final class UpdateManager: ObservableObject {
 
     // MARK: - Feed Parsers & Cryptographic Primitives (Testable & Pure)
 
+    private static func parseSignedManifestJSON(_ data: Data, overrideZipURL: String? = nil) -> ReleaseManifest? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = (json["version"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !version.isEmpty,
+              let feedZipUrl = (json["zipUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !feedZipUrl.isEmpty,
+              let sha256 = (json["sha256"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sha256.isEmpty,
+              let sig = (json["signature"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sig.isEmpty else {
+            return nil
+        }
+
+        let cleanVer = version.hasPrefix("v") ? String(version.dropFirst()) : version
+        let build = (json["build"] as? Int) ?? inferredBuildNumber(from: cleanVer)
+        guard verifyManifestSignature(version: cleanVer, build: build, sha256: sha256, signatureBase64: sig) else {
+            return nil
+        }
+
+        let notes = (json["notes"] as? [String]) ?? []
+        let primaryZip = overrideZipURL ?? feedZipUrl
+        let fallbackZip = (overrideZipURL != nil) ? feedZipUrl : (json["fallbackZipUrl"] as? String)
+        return ReleaseManifest(
+            version: cleanVer,
+            build: build,
+            publishedAt: json["publishedAt"] as? String,
+            urgency: json["urgency"] as? String,
+            title: json["title"] as? String,
+            notes: notes,
+            zipUrl: primaryZip,
+            fallbackZipUrl: fallbackZip,
+            dmgUrl: json["dmgUrl"] as? String,
+            sha256: sha256.lowercased(),
+            signature: sig,
+            isFromSignedFeed: true
+        )
+    }
+
     private static func fetchPrimarySignedFeed() async -> ReleaseManifest? {
         guard var comps = URLComponents(url: primaryFeedURL, resolvingAgainstBaseURL: false) else { return nil }
         comps.queryItems = [URLQueryItem(name: "t", value: "\(Int(Date().timeIntervalSince1970 / 60))")]
@@ -511,41 +630,14 @@ public final class UpdateManager: ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
-              let http = resp as? HTTPURLResponse, http.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let version = (json["version"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !version.isEmpty,
-              let zipUrl = (json["zipUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !zipUrl.isEmpty,
-              let sha256 = (json["sha256"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sha256.isEmpty,
-              let sig = (json["signature"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sig.isEmpty else {
+              let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             return nil
         }
-
-        let build = (json["build"] as? Int) ?? inferredBuildNumber(from: version)
-        guard verifyManifestSignature(version: version, build: build, sha256: sha256, signatureBase64: sig) else {
-            return nil
-        }
-
-        let notes = (json["notes"] as? [String]) ?? []
-        return ReleaseManifest(
-            version: version.replacingOccurrences(of: "v", with: ""),
-            build: build,
-            publishedAt: json["publishedAt"] as? String,
-            urgency: json["urgency"] as? String,
-            title: json["title"] as? String,
-            notes: notes,
-            zipUrl: zipUrl,
-            fallbackZipUrl: json["fallbackZipUrl"] as? String,
-            dmgUrl: json["dmgUrl"] as? String,
-            sha256: sha256.lowercased(),
-            signature: sig,
-            isFromSignedFeed: true
-        )
+        return parseSignedManifestJSON(data)
     }
 
+    /// GitHub Releases fallback ALWAYS fetches and Ed25519-verifies the uploaded `latest.json` manifest asset
+    /// — unsigned releases or missing signatures are strictly rejected!
     private static func fetchGitHubLatestRelease() async -> ReleaseManifest? {
         var req = URLRequest(url: githubLatestAPIURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6.5)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -554,53 +646,35 @@ public final class UpdateManager: ObservableObject {
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               let http = resp as? HTTPURLResponse, http.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tagName = (json["tag_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               let assets = json["assets"] as? [[String: Any]] else {
             return nil
         }
 
-        let cleanVer = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
+        guard let manifestAsset = assets.first(where: { ($0["name"] as? String)?.lowercased() == "latest.json" }),
+              let manifestURLStr = manifestAsset["browser_download_url"] as? String,
+              let manifestURL = URL(string: manifestURLStr),
+              isAllowedDownloadURL(manifestURL) else {
+            return nil
+        }
+
         let zipAsset = assets.first {
             guard let name = ($0["name"] as? String)?.lowercased() else { return false }
             return name.hasSuffix(".zip") && name.contains("agentgauge")
         }
-        let dmgAsset = assets.first {
-            guard let name = ($0["name"] as? String)?.lowercased() else { return false }
-            return name.hasSuffix(".dmg") && name.contains("agentgauge")
-        }
+        let ghZipURL = (zipAsset?["browser_download_url"] as? String)
+            .flatMap { URL(string: $0).flatMap { isAllowedDownloadURL($0) ? $0.absoluteString : nil } }
 
-        guard let zipAsset,
-              let zipDownload = zipAsset["browser_download_url"] as? String else {
+        var mReq = URLRequest(url: manifestURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6.5)
+        mReq.setValue("application/json", forHTTPHeaderField: "Accept")
+        mReq.setValue("AgentGauge", forHTTPHeaderField: "User-Agent")
+
+        guard let (mData, mResp) = try? await URLSession.shared.data(for: mReq),
+              let mHTTP = mResp as? HTTPURLResponse, mHTTP.statusCode == 200,
+              let finalURL = mHTTP.url, isAllowedDownloadURL(finalURL) else {
             return nil
         }
 
-        var digestHex: String? = nil
-        if let rawDigest = zipAsset["digest"] as? String,
-           rawDigest.lowercased().hasPrefix("sha256:") {
-            digestHex = String(rawDigest.dropFirst("sha256:".count)).lowercased()
-        }
-
-        let bodyLines = ((json["body"] as? String) ?? "")
-            .split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }
-            .prefix(4)
-            .map { String($0.dropFirst(2)) }
-
-        return ReleaseManifest(
-            version: cleanVer,
-            build: inferredBuildNumber(from: cleanVer),
-            publishedAt: json["published_at"] as? String,
-            urgency: "normal",
-            title: json["name"] as? String,
-            notes: Array(bodyLines),
-            zipUrl: zipDownload,
-            fallbackZipUrl: nil,
-            dmgUrl: dmgAsset?["browser_download_url"] as? String,
-            sha256: digestHex,
-            signature: nil,
-            isFromSignedFeed: false
-        )
+        return parseSignedManifestJSON(mData, overrideZipURL: ghZipURL)
     }
 
     public nonisolated static func canonicalSignedPayload(version: String, build: Int, sha256: String) -> Data {
@@ -633,25 +707,22 @@ public final class UpdateManager: ObservableObject {
         let digest = SHA256.hash(data: data)
         let computedHex = digest.map { String(format: "%02x", $0) }.joined()
 
-        if let expectedHex = manifest.sha256?.lowercased(), !expectedHex.isEmpty {
-            guard computedHex == expectedHex else {
-                throw NSError(domain: "UpdateManager", code: 10, userInfo: [NSLocalizedDescriptionKey: "更新包 SHA-256 校验不匹配，已拦截安装"])
-            }
-        } else if manifest.isFromSignedFeed {
-            throw NSError(domain: "UpdateManager", code: 11, userInfo: [NSLocalizedDescriptionKey: "更新清单缺少哈希摘要"])
+        // Fail closed for ALL update sources: both SHA-256 and Ed25519 release signature are strictly mandatory!
+        guard let expectedHex = manifest.sha256?.lowercased(), !expectedHex.isEmpty else {
+            throw NSError(domain: "UpdateManager", code: 11, userInfo: [NSLocalizedDescriptionKey: "更新清单缺少哈希摘要，已拦截安装"])
         }
-
-        if manifest.isFromSignedFeed || manifest.signature != nil {
-            guard let sig = manifest.signature,
-                  verifyManifestSignature(
-                      version: manifest.version,
-                      build: manifest.build,
-                      sha256: computedHex,
-                      signatureBase64: sig,
-                      publicKeyBase64: publicKeyBase64
-                  ) else {
-                throw NSError(domain: "UpdateManager", code: 12, userInfo: [NSLocalizedDescriptionKey: "更新包 Ed25519 数字签名校验未通过"])
-            }
+        guard computedHex == expectedHex else {
+            throw NSError(domain: "UpdateManager", code: 10, userInfo: [NSLocalizedDescriptionKey: "更新包 SHA-256 校验不匹配，已拦截安装"])
+        }
+        guard let sig = manifest.signature, !sig.isEmpty,
+              verifyManifestSignature(
+                  version: manifest.version,
+                  build: manifest.build,
+                  sha256: computedHex,
+                  signatureBase64: sig,
+                  publicKeyBase64: publicKeyBase64
+              ) else {
+            throw NSError(domain: "UpdateManager", code: 12, userInfo: [NSLocalizedDescriptionKey: "更新包 Ed25519 数字签名校验未通过"])
         }
     }
 
@@ -716,11 +787,52 @@ public final class UpdateManager: ObservableObject {
         proc.waitUntilExit()
     }
 
-    private nonisolated static func verifyExtractedBundle(at appURL: URL) -> Bool {
+    private nonisolated static func signingTeamIdentifier(for appURL: URL) -> String? {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        proc.arguments = ["-dv", "--verbose=2", appURL.path]
+        let errPipe = Pipe()
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = errPipe
+        do {
+            try proc.run()
+            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+            proc.waitUntilExit()
+            guard proc.terminationStatus == 0 else { return nil }
+            let text = String(decoding: data, as: UTF8.self)
+            for line in text.split(separator: "\n") {
+                if line.hasPrefix("TeamIdentifier=") {
+                    let team = String(line.dropFirst("TeamIdentifier=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (team.isEmpty || team == "not set") ? nil : team
+                }
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated static func verifyExtractedBundle(
+        at appURL: URL,
+        expectedVersion: String? = nil,
+        expectedBuild: Int? = nil,
+        expectedTeamIdentifier: String? = nil
+    ) -> Bool {
         let plistURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let dict = NSDictionary(contentsOf: plistURL),
               (dict["CFBundleIdentifier"] as? String) == "com.kahlil.AgentGauge" else {
             return false
+        }
+        if let expectedVersion {
+            let cleanExp = expectedVersion.hasPrefix("v") ? String(expectedVersion.dropFirst()) : expectedVersion
+            guard (dict["CFBundleShortVersionString"] as? String) == cleanExp else {
+                return false
+            }
+        }
+        if let expectedBuild {
+            guard let rawBuild = dict["CFBundleVersion"] as? String, Int(rawBuild) == expectedBuild else {
+                return false
+            }
         }
         let mainExec = appURL.appendingPathComponent("Contents/MacOS/AgentGauge").path
         let helperExec = appURL.appendingPathComponent("Contents/MacOS/AgentGaugeCleanup").path
@@ -737,9 +849,16 @@ public final class UpdateManager: ObservableObject {
         do {
             try verify.run()
             verify.waitUntilExit()
-            return verify.terminationStatus == 0
+            guard verify.terminationStatus == 0 else { return false }
         } catch {
             return false
         }
+
+        if let expectedTeam = expectedTeamIdentifier {
+            guard signingTeamIdentifier(for: appURL) == expectedTeam else {
+                return false
+            }
+        }
+        return true
     }
 }

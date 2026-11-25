@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.3.3-141413?style=flat-square" alt="Release v1.3.3" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/版本-v1.3.4-141413?style=flat-square" alt="Release v1.3.4" /></a>
     <img src="https://img.shields.io/badge/系统-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/引擎-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/已支持-30%2B%20主流大模型与套餐-478577?style=flat-square" alt="30+ 主流大模型与套餐" />
@@ -61,8 +61,9 @@
 
 ---
 
-## v1.3.3 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
+## v1.3.4 更新亮点（完整记录见 [CHANGELOG.md](./CHANGELOG.md)）
 
+- **全仓安全、并发与多账号隔离深度加固（`v1.3.4`）**：全链路（OTA / GitHub 回退 / `install.sh`）强制 Ed25519 + SHA-256 验签与内核级 `renamex_np` 原子交换自动回滚；修复 `WebUsageFetcher` 队列卡死、`NativeDockTile.c` bootstrap 端口泄漏并将 Dock IPC 迁出主线程配合失败补偿释放；全面加固 `Cursor ↔ Grok Bot`、Antigravity 缺池、Gemini CLI 缓存与按账号倍率隔离，并将交付 ZIP 内包核验强制接入发布流程。
 - **全平台 `3x / 5x / 20x` 倍率引擎、零阻塞 Dock 悬停优化与自动化测试门禁（`v1.3.3`）**：统一 Antigravity / Gemini（`AI Ultra · 5x / 20x`）、ChatGPT / Codex（`Pro Lite · 5x` / `Pro · 20x`）、Claude（`Max · 5x / 20x`）、Cursor（`Pro+ · 3x` / `Ultra · 20x`）与 SuperGrok（`Heavy · 20x`）倍率识别与按邮箱独立记忆，菜单栏套餐徽章可直接一键切换；修复 `agy 1.5.16` 异步 `plan_tier` 竞态；彻底消除 60Hz/30Hz Dock 主线程高频 IPC 阻塞并将闲置期 CLI 唤醒降低约 65%；同步沉淀 `AGENTS.md`、单一 `VERSION` 源、`swift test` 离线单测与 `Scripts/verify_release.sh` 发布门禁。
 - **水色所见即所得、`Claude / GPT` 真实模型名与 `AI Ultra · 5x / 20x` 档位（`v1.3.2`）**：Dock 水波与图标徽标始终忠实呈现你选定的水色或应用主题色（低额度变橙/红提醒统一留在悬停与面板进度条上）；Antigravity 第三方池更正为实际模型名 **`Claude / GPT`**；新增 `AI Ultra · 5x / 20x` 档位徽章与一键标注；修复未消耗满血池因 `1970-01-01` 哨兵时间戳误显示「即将重置」并反复穿透缓存的问题。
 - **跨产品独立额度池硬隔离与防误采校准（`v1.3.1`）**：彻底解耦消费级 `Gemini.app`（专属解析 `gemini.google.com/usage` 当前用量 + 每周限额）与 `Antigravity` 开发者算力池，解耦消费级对话应用 `Grok.app` 与编程智能体 `Grok Bot` 周额度池，为 `Cursor` ↔ `Grok Bot` 增加重置时间戳一致性校验，自动剥离网页聊天消息与代码块防误判，并锁定多变体应用（`Zed` / `Zed Preview`、`WorkBuddy` / `CodeBuddy`）按当前悬停图标精准渲染。
@@ -80,7 +81,7 @@
 
 ### 方式一：直接下载安装包（`.dmg`）
 
-- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)（`v1.3.3`，`2.9 MB`）
+- **官网全球 / 国内高速直链（Cloudflare CDN 推荐）**：[**AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)（`v1.3.4`，`2.9 MB`）
 - **GitHub Releases 下载**：[**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg)
 - **终端一行命令安装 / 旧版直接覆盖升级**：
   ```bash

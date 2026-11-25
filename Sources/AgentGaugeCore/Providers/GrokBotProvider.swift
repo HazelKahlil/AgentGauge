@@ -2,39 +2,106 @@ import AppKit
 import Foundation
 
 /// Native provider for Grok Bot (`com.anysphere.sand`):
-/// 1. Reads Grok Bot's own persisted `weekly-usage.cache` & `account-slot` in `~/Library/Application Support/Grok Bot/sand-client-persistence/` (matched strictly to active account slot);
-/// 2. Cross-checks live Anysphere/xAI unified quota API ONLY when Cursor & Grok Bot share the same linked xAI/Anysphere account.
+/// 1. Reads Grok Bot's own persisted `weekly-usage.cache` & `account-slot` in `~/Library/Application Support/Grok Bot/sand-client-persistence/` (matched strictly to the exact active account slot);
+/// 2. Cross-checks live Anysphere/xAI unified quota API ONLY when strict identity AND reset-epoch agreement (`<= 300s` with BOTH valid timestamps present) are proven.
 public struct GrokBotProvider: UsageProvider {
     public let agentID: AgentID = .grokbot
 
     public init() {}
+
+    /// Single shared cross-product sharing predicate for `Grok Bot` <-> `Cursor`:
+    /// - Identity: if both sides resolved emails, normalized emails MUST match; otherwise requires exact non-empty `grokAccountSlot == cursorAuthId` (NEVER `grok|` prefix heuristics!).
+    /// - Reset epochs: BOTH `grokResetsAt` and `cursorResetsAt` MUST exist, be valid (`>= 2000-01-01`), and differ by `<= 300s`.
+    public static func canShareCrossProductQuota(
+        grokAccountSlot: String?,
+        cursorAuthId: String?,
+        grokEmail: String?,
+        cursorEmail: String?,
+        grokResetsAt: Date?,
+        cursorResetsAt: Date?
+    ) -> Bool {
+        let gEmail = grokEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        let cEmail = cursorEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        let gSlot = grokAccountSlot?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let cAuth = cursorAuthId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+
+        let identityMatches: Bool
+        if let gEmail, let cEmail {
+            guard gEmail == cEmail else { return false }
+            if let gSlot, let cAuth, gSlot != cAuth {
+                return false
+            }
+            identityMatches = true
+        } else if let gSlot, let cAuth, gSlot == cAuth {
+            identityMatches = true
+        } else {
+            identityMatches = false
+        }
+        guard identityMatches else { return false }
+
+        guard let r1 = QuotaSnapshot.sanitizedResetDate(grokResetsAt),
+              let r2 = QuotaSnapshot.sanitizedResetDate(cursorResetsAt) else {
+            return false
+        }
+        return abs(r1.timeIntervalSince(r2)) <= 300.0
+    }
+
+    /// Extracts the exact account slot identifier from `sand.client.slice.account.<slot>.weekly-usage.cache`.
+    static func extractSlot(fromWeeklyCacheKey decodedKey: String) -> String? {
+        let prefix = "sand.client.slice.account."
+        let suffix = ".weekly-usage.cache"
+        guard decodedKey.hasPrefix(prefix), decodedKey.hasSuffix(suffix) else { return nil }
+        let start = decodedKey.index(decodedKey.startIndex, offsetBy: prefix.count)
+        let end = decodedKey.index(decodedKey.endIndex, offsetBy: -suffix.count)
+        guard start < end else { return nil }
+        let rawSlot = String(decodedKey[start..<end])
+        return (rawSlot.removingPercentEncoding ?? rawSlot).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// Pure slot selector: if `activeSlot` is present, ONLY an exact slot match is accepted (never falls back to another account's older blob!).
+    static func selectUsageCandidate<T>(
+        activeSlot: String?,
+        candidates: [(slot: String, readAtMs: Double, payload: T)]
+    ) -> T? {
+        if let active = activeSlot?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            return candidates
+                .filter { $0.slot == active }
+                .max(by: { $0.readAtMs < $1.readAtMs })?
+                .payload
+        }
+        // Only fall back when no active-slot marker exists AND there is a single unambiguous blob
+        if candidates.count == 1 {
+            return candidates[0].payload
+        }
+        return nil
+    }
 
     public func fetchSnapshot() async -> QuotaSnapshot {
         let isWorking = Self.checkIsWorking()
         let cursorAuth = CursorProvider.readLocalAuthState()
         let localCache = Self.readSandPersistenceUsage(matchingEmailFrom: cursorAuth)
 
-        // 1. Only share live Cursor/Anysphere API when verified as the SAME xAI-linked account!
-        let isSameUnifiedAccount: Bool = {
-            if let slot = localCache?.activeSlot, let cAuthId = cursorAuth.authId, !slot.isEmpty, slot == cAuthId {
-                return true
+        // 1. Only share live Cursor/Anysphere API when Grok Bot's own active-slot cache exists AND exact account slot matches Cursor's authId!
+        let exactSlotMatched: Bool = {
+            guard let slot = localCache?.activeSlot?.nilIfEmpty,
+                  let cAuthId = cursorAuth.authId?.nilIfEmpty else {
+                return false
             }
-            if cursorAuth.signUpType?.lowercased() == "grok" {
-                return localCache == nil || localCache?.activeSlot?.lowercased().hasPrefix("grok|") == true
-            }
-            return false
+            return slot == cAuthId
         }()
 
-        if isSameUnifiedAccount, cursorAuth.accessToken != nil {
+        if exactSlotMatched,
+           let cache = localCache,
+           cursorAuth.accessToken != nil {
             let liveCursor = await CursorProvider().fetchSnapshot()
-            // Double-verify reset epoch agreement: if both timestamps exist and differ by >5 min, they are separate billing buckets!
-            let epochsAgree: Bool = {
-                if let r1 = localCache?.resetsAt, let r2 = liveCursor.resetsAt {
-                    return abs(r1.timeIntervalSince(r2)) <= 300.0
-                }
-                return true
-            }()
-            if epochsAgree, let liveRem = liveCursor.remainingPercent {
+            if Self.canShareCrossProductQuota(
+                grokAccountSlot: cache.activeSlot,
+                cursorAuthId: cursorAuth.authId,
+                grokEmail: cache.email,
+                cursorEmail: liveCursor.accountEmail ?? cursorAuth.email,
+                grokResetsAt: cache.resetsAt,
+                cursorResetsAt: liveCursor.resetsAt
+            ), let liveRem = liveCursor.remainingPercent {
                 let grokWindows = liveCursor.windows.map { win in
                     QuotaWindow(
                         label: win.label
@@ -47,8 +114,8 @@ public struct GrokBotProvider: UsageProvider {
                         isPrimary: win.isPrimary
                     )
                 }
-                let planLabel = localCache?.planTier ?? liveCursor.planTier
-                let email = localCache?.email ?? liveCursor.accountEmail
+                let planLabel = cache.planTier ?? liveCursor.planTier
+                let email = cache.email ?? liveCursor.accountEmail
                 return QuotaSnapshot(
                     agentID: .grokbot,
                     remainingPercent: liveRem,
@@ -64,7 +131,7 @@ public struct GrokBotProvider: UsageProvider {
             }
         }
 
-        // 2. Instant local Grok Bot sand-client-persistence reading for Grok Bot's own active slot
+        // 2. Instant local Grok Bot sand-client-persistence reading strictly for Grok Bot's own active slot
         if let cache = localCache {
             return QuotaSnapshot(
                 agentID: .grokbot,
@@ -90,11 +157,11 @@ public struct GrokBotProvider: UsageProvider {
         return QuotaSnapshot(
             agentID: .grokbot,
             remainingPercent: nil,
-            accountEmail: isSameUnifiedAccount ? cursorAuth.email : nil,
+            accountEmail: nil,
             isWorking: isWorking,
             sourceDescription: "Grok Bot 未登录",
-            requiresWebLogin: true,
-            errorMessage: "请打开 Grok Bot 登录账号"
+            requiresWebLogin: false,
+            errorMessage: "请打开 Grok Bot 桌面端登录账号"
         )
     }
 
@@ -115,7 +182,7 @@ public struct GrokBotProvider: UsageProvider {
         }
 
         var activeSlot: String? = nil
-        var usageCandidates: [(slotKey: String, readAtMs: Double, usage: [String: Any])] = []
+        var usageCandidates: [(slot: String, readAtMs: Double, payload: [String: Any])] = []
 
         for fn in files where fn.hasSuffix(".blob") {
             let rawDecoded = decodeBase32Filename(String(fn.dropLast(5)))
@@ -126,31 +193,24 @@ public struct GrokBotProvider: UsageProvider {
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath)),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let val = obj["value"] as? String {
-                    activeSlot = val.removingPercentEncoding ?? val
+                    activeSlot = (val.removingPercentEncoding ?? val).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 }
-            } else if decodedKey.hasSuffix(".weekly-usage.cache") {
+            } else if let slot = extractSlot(fromWeeklyCacheKey: decodedKey) {
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath)),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let val = obj["value"] as? [String: Any],
                    let reading = val["reading"] as? [String: Any],
                    let usage = reading["usage"] as? [String: Any] {
                     let readAt = (reading["readAtMs"] as? NSNumber)?.doubleValue ?? 0
-                    usageCandidates.append((slotKey: decodedKey, readAtMs: readAt, usage: usage))
+                    usageCandidates.append((slot: slot, readAtMs: readAt, payload: usage))
                 }
             }
         }
 
-        // Match exact active account slot first; fall back to most recently read usage blob
-        let matchedUsage: [String: Any]? = {
-            if let slot = activeSlot, !slot.isEmpty {
-                if let exact = usageCandidates.first(where: { $0.slotKey.contains(slot) }) {
-                    return exact.usage
-                }
-            }
-            return usageCandidates.max(by: { $0.readAtMs < $1.readAtMs })?.usage
-        }()
+        guard let usage = selectUsageCandidate(activeSlot: activeSlot, candidates: usageCandidates) else {
+            return nil
+        }
 
-        guard let usage = matchedUsage else { return nil }
         let used: Double
         if let n = usage["percentUsed"] as? NSNumber {
             used = n.doubleValue
@@ -158,10 +218,7 @@ public struct GrokBotProvider: UsageProvider {
             return nil
         }
 
-        var resetsAt: Date? = nil
-        if let ms = (usage["nextResetMs"] as? NSNumber)?.doubleValue, ms > 1_000_000_000_000 {
-            resetsAt = Date(timeIntervalSince1970: ms / 1000.0)
-        }
+        let resetsAt = QuotaSnapshot.parseValidResetDate(from: usage["nextResetMs"])
 
         let isTrial = (usage["isSandTrial"] as? Bool) ?? false
         let isTeam = (usage["isTeamSeat"] as? Bool) ?? false
@@ -185,13 +242,16 @@ public struct GrokBotProvider: UsageProvider {
             return unifiedPlan?.nilIfEmpty ?? grokLabel?.nilIfEmpty
         }()
 
-        var resolvedEmail: String? = nil
-        if let slot = activeSlot, let cAuthId = cursorAuth.authId, slot == cAuthId {
-            resolvedEmail = cursorAuth.email
-        } else if cursorAuth.signUpType?.lowercased() == "grok",
-                  (activeSlot == nil || activeSlot?.lowercased().hasPrefix("grok|") == true) {
-            resolvedEmail = cursorAuth.email
-        }
+        // Only attach Cursor's email when exact `activeSlot == cursorAuth.authId` proves the exact same user account!
+        let resolvedEmail: String? = {
+            if let direct = (usage["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                return direct
+            }
+            if let slot = activeSlot, let cAuthId = cursorAuth.authId, !slot.isEmpty, slot == cAuthId {
+                return cursorAuth.email
+            }
+            return nil
+        }()
 
         return SandCachedUsage(
             activeSlot: activeSlot,

@@ -47,10 +47,15 @@ Every change—especially across quota providers, Dock rendering/hover physics, 
 1. **Zero Uncached IPC in Render / Hover Loops**:
    - Hot loops (`OverlayManager.tick` at 30Hz, Dock hover poll at 60Hz, tooltip spring at 120Hz) MUST NOT perform uncached `UserDefaults(suiteName:)`, `NSRunningApplication.runningApplications`, `NSWorkspace`, or `bootstrap_look_up` IPC on `@MainActor`.
    - `DockLocator.currentOrientation()` MUST stay cached (`>= 2s` TTL).
-   - `NativeTileChannel` MUST reuse active tile PIDs via `kill(pid, 0) == 0` fast-path and cache the `com.apple.dock.server` Mach send right in `NativeDockTile.c` with automatic invalidation on send error.
-   - `mach_msg` send timeout in `NativeDockTile.c` MUST remain `<= 24ms` (`16ms` draw / `24ms` release) so Dock hiccups never stall UI springs.
-2. **Activity-Aware CLI Caching & Deterministic Reaping**:
-   - Expensive CLI probes (`agy`, `codex app-server`) MUST use activity-aware caching (longer idle TTL when local DB/log mtimes are unchanged, short active TTL after new prompts, bypassed immediately on manual refresh) and deterministic `SIGTERM -> SIGKILL -> waitUntilExit` reaping.
+   - `NativeTileChannel` MUST reuse active tile PIDs via `kill(pid, 0) == 0` fast-path, dispatch Dock Mach draw/release IPC off `@MainActor` onto a dedicated serial `ipcQueue`, retain failed releases in `pendingReleases` until confirmed released or target exited, and cache the `com.apple.dock.server` Mach send right in `NativeDockTile.c` while ALWAYS deallocating the copied `TASK_BOOTSTRAP_PORT` send right (`mach_port_deallocate(mach_task_self(), bp)`).
+   - `mach_msg` worst-case total send/release timeout in `NativeDockTile.c` MUST remain `<= 24ms` (16ms draw; 16ms + at most one 8ms stale-port retry on release).
+   - `WebUsageFetcher` MUST transfer evaluation-slot ownership atomically without clearing `isEvaluating` before waking the next FIFO waiter, and MUST guard every async callback with a monotonic request ID.
+2. **Activity-Aware CLI Caching, Keychain Timeouts & Deterministic Reaping**:
+   - Expensive CLI probes (`agy`, `codex app-server`) and `/usr/bin/security` Keychain reads MUST use bounded timeouts, activity-aware caching, and deterministic `SIGTERM -> SIGKILL -> waitUntilExit` reaping.
+3. **Fail-Closed Cryptographic OTA & Atomic Rollback**:
+   - Every update source (primary CDN, GitHub Releases fallback, `Website/install.sh`) MUST verify Ed25519 release signatures + SHA-256 + inner bundle version/build/codesign (zero unsigned fallbacks).
+   - Upgrades MUST stage on the target volume, swap atomically (`renamex_np`), verify launch liveness, and roll back automatically on launch failure.
+   - `Scripts/push_remote_update.sh --publish` MUST invoke `Scripts/verify_release.sh --require-artifacts` before any upload or CDN deploy.
 
 ---
 

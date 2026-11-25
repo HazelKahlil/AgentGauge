@@ -8,6 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [1.3.4] - 2026-11-25
+
+### Security & Reliability / 安全与可靠性加固
+
+- **End-to-End Ed25519 Release Signing Across All OTA & Installer Paths (`UpdateManager`, `install.sh`)**: Removed unsigned GitHub Release fallback (`UpdateManager` now fetches and Ed25519-verifies GitHub's uploaded `latest.json` manifest and checks extracted bundle version/build/codesign & TeamIdentifier on disk hot-reloads); upgraded `Website/install.sh` with a zero-dependency Ed25519 verifier (fail-closed) and mandatory SHA-256 + `codesign` checks.  
+  **全链路 Ed25519 强制验签（OTA + GitHub 回退 + 一行脚本安装器）**：消除未验签回退路径，GitHub Releases 回退源与 `Website/install.sh` 统一执行 Ed25519 签名 + SHA-256 + 解包后版本/代码签名校验（无验签能力或验签失败直接拦截）；磁盘替换自动热重启同步核验签名团队一致性。
+- **Kernel-Atomic `renamex_np` Bundle Swap & Auto-Rollback**: Added `--atomic-swap` (`renamex_np(..., RENAME_SWAP)`) to `AgentGaugeCleanup`, staging updates on the target volume and verifying new process launch before deleting the previous app (automatically rolling back if launch fails) across OTA updates, `install.sh`, and DMG one-click upgraders.  
+  **内核级 `renamex_np` 原子交换与启动失败自动回滚**：OTA 更新、终端一行安装器与 DMG 一键助手统一改为同卷暂存 + 内核原子交换，确认新版拉起存活后才清理旧包，启动异常自动无损回滚。
+
+### Fixed / 修复
+
+- **Concurrency, Mach Port & Subprocess Hardening**:
+  - Fixed `WebUsageFetcher` FIFO ownership handoff gap and added per-request generation IDs + strict cancellation guards so concurrent web refreshes never orphan continuations or stall `refreshAll()`.
+  - Fixed `TASK_BOOTSTRAP_PORT` Mach send-right leak (`mach_port_deallocate(bp)`) in `NativeDockTile.c`, moved Mach draw/release IPC onto an ordered off-main-thread `ipcQueue` with `<= 24ms` worst-case release budget, and tracked failed releases in `pendingReleases` so watchdog/main-process compensation never forgets an icon.
+  - Guarded `ClaudeProvider` Keychain `/usr/bin/security` queries behind file-token fallback + `2.5s` hard timeout & reaping; guarded `UpdateManager.checkForUpdates` with generation checks so background checks never clobber `.downloading`/`.installing` progress.
+  **并发、Mach 端口与子进程全量加固**：修复 `WebUsageFetcher` 队列所有权空档与回调串台导致的刷新卡死；修复 `NativeDockTile.c` 泄漏 `TASK_BOOTSTRAP_PORT` send right，将 Dock Mach 通信迁出主线程并增加 `pendingReleases` 补偿机制；为 `ClaudeProvider` Keychain 查询补齐 `2.5s` 硬超时与按需触发；为 `UpdateManager` 补齐代次守卫，防止后台检查覆盖下载/安装进度。
+- **Account, Pool & Product Boundary Isolation**:
+  - Hardened `Cursor` ↔ `Grok Bot` sharing behind a single strict predicate requiring exact identity + BOTH valid reset timestamps within `<= 300s`, and exact `sand.client.slice.account.<slot>.weekly-usage.cache` matching (never falling back to an old account blob).
+  - Scoped `Cursor` & `Codex` caches/single-flight and `AgentGaugeStore` transient-error preservation strictly by account identity + request generation; prevented `AntigravityProvider` from borrowing the sibling pool when a fixed pool is missing; tagged `GeminiSnapshotCache` by source (`consumerWeb` vs `developerCLI`) so installing `Gemini.app` immediately rejects cached CLI quota.
+  - Strictly scoped plan multipliers to `(agentID, confirmedEmail)` with a single application point in `AgentGaugeStore` (clean `5x -> 自动` recovery, zero cross-product leakage); unified `>= 2000-01-01` reset-date sanitization inside `QuotaSnapshot` / `QuotaWindow` across all providers; aligned Menu Bar login actions with each provider's actual auth mechanism (CLI/desktop vs WebKit).
+  **账号、模型池与跨产品边界彻底隔离**：统一 `Cursor ↔ Grok Bot` 共享校验（严格精确槽位/邮箱 + 双有效重置时间 `<= 300s`），禁止新槽位回落旧账号缓存；`Cursor` / `Codex` 缓存与 Store 暂态报错保留严格按账号身份与代次隔离；修复 Antigravity 固定池缺数据时借用另一池的问题；`GeminiSnapshotCache` 按来源打标防安装桌面版后串读 CLI 缓存；套餐倍率收敛为单一生效点并严格按 `(应用, 确认邮箱)` 独立保存；全量 Provider 统一过滤 `1970` 哨兵时间戳，并按实际鉴权方式修正菜单栏登录引导。
+- **Website Resilience & Fail-Closed Release Tooling**: Wrapped `localStorage` access in `Website/js/app.js` against storage-disabled browsers; made `Scripts/sync_version.sh` validate every file in memory before atomic writes (`--check` shared by `verify_release.sh`); and wired mandatory fail-closed release + delivered-ZIP inner-bundle verification directly into `Scripts/push_remote_update.sh --publish`.  
+  **官网无痕模式容错与不可绕过发布门禁**：为官网 `localStorage` 读写补齐异常兜底；升级 `sync_version.sh` 先全量内存校验再原子落盘；`push_remote_update.sh --publish` 强制串联 `verify_release.sh` 并实际解包检验交付 ZIP 内 `.app` 的版本、构建号与代码签名。
+
+---
+
 ## [1.3.3] - 2026-11-25
 
 ### Added / 新增

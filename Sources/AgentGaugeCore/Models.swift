@@ -272,16 +272,16 @@ extension AgentID {
 
     public var webLoginURL: URL? {
         switch self {
-        case .codex: return URL(string: "https://chatgpt.com/codex/settings/usage")
+        case .codex: return nil
         case .antigravity: return nil
         case .claude: return URL(string: "https://claude.ai/settings/usage")
         case .cursor: return URL(string: "https://cursor.com/dashboard/spending")
-        case .grokbot: return URL(string: "https://cursor.com/dashboard/spending")
+        case .grokbot: return nil
         case .windsurf: return URL(string: "https://windsurf.com/subscription/usage")
         case .workbuddy: return URL(string: "https://www.codebuddy.cn/profile/plan")
         case .trae: return URL(string: "https://www.trae.ai/account-setting")
         case .kiro: return URL(string: "https://app.kiro.dev")
-        case .vscode: return URL(string: "https://github.com/settings/copilot")
+        case .vscode: return nil
         case .qoder: return URL(string: "https://qoder.com/account")
         case .zed: return URL(string: "https://zed.dev/account")
         case .warp: return URL(string: "https://app.warp.dev/billing")
@@ -299,6 +299,22 @@ extension AgentID {
         case .lechat: return URL(string: "https://chat.mistral.ai")
         case .manus: return URL(string: "https://manus.im")
         case .poe: return URL(string: "https://poe.com/settings")
+        }
+    }
+
+    /// True only when this provider genuinely consumes WebKit cookies created by `openWebLogin(for:)`.
+    public var usesWebKitSessionForQuota: Bool {
+        webLoginURL != nil
+    }
+
+    /// Non-WebKit local connection hint for CLI/desktop-only providers (Codex, Antigravity, Grok Bot, VS Code Copilot).
+    public var localAuthGuidance: String? {
+        switch self {
+        case .codex:       return "请在终端运行 `codex login` 完成登录，随后点击刷新"
+        case .antigravity: return "请在终端运行 `agy` 或打开 Antigravity 完成登录"
+        case .grokbot:     return "请打开 Grok Bot 桌面端登录 xAI 账号，随后点击刷新"
+        case .vscode:      return "请在终端运行 `gh auth login` 完成 GitHub 登录"
+        default:           return nil
         }
     }
 
@@ -396,7 +412,7 @@ public struct QuotaWindow: Sendable, Equatable {
     ) {
         self.label = label
         self.remainingPercent = max(0, min(100, remainingPercent))
-        self.resetsAt = resetsAt
+        self.resetsAt = QuotaSnapshot.sanitizedResetDate(resetsAt)
         self.resetText = resetText
         self.isPrimary = isPrimary
     }
@@ -472,7 +488,7 @@ public struct QuotaSnapshot: Sendable, Equatable {
         self.accountEmail = accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.planTier = planTier?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.primaryLabel = primaryLabel
-        self.resetsAt = resetsAt
+        self.resetsAt = Self.sanitizedResetDate(resetsAt)
         self.resetText = resetText
         self.windows = windows
         self.subtitle = subtitle
@@ -485,6 +501,48 @@ public struct QuotaSnapshot: Sendable, Equatable {
 
     public var isCreditsBased: Bool {
         creditsRemaining != nil || balanceDisplay != nil
+    }
+
+    /// Minimum plausible reset timestamp (`2000-01-01T00:00:00Z`).
+    /// Filters unset Unix epoch sentinels (`0`, `1970-01-01T00:00:00Z`) across all providers so untouched buckets
+    /// never display false "即将重置" or repeatedly invalidate caches.
+    public static let minimumValidResetEpoch: TimeInterval = 946_684_800
+
+    public static func sanitizedResetDate(_ date: Date?) -> Date? {
+        guard let date else { return nil }
+        let ts = date.timeIntervalSince1970
+        guard ts.isFinite, ts >= minimumValidResetEpoch else { return nil }
+        return date
+    }
+
+    /// Shared reset timestamp parser for all providers (Unix seconds, Unix milliseconds, fractional/standard ISO-8601).
+    public static func parseValidResetDate(from raw: Any?) -> Date? {
+        if let d = raw as? Date {
+            return sanitizedResetDate(d)
+        }
+        if let n = raw as? NSNumber {
+            let v = n.doubleValue
+            guard v.isFinite else { return nil }
+            let secs = v > 1_000_000_000_000 ? (v / 1000.0) : v
+            return sanitizedResetDate(Date(timeIntervalSince1970: secs))
+        }
+        if let s = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            let fFrac = ISO8601DateFormatter()
+            fFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let d = fFrac.date(from: s) {
+                return sanitizedResetDate(d)
+            }
+            let fStd = ISO8601DateFormatter()
+            fStd.formatOptions = [.withInternetDateTime]
+            if let d = fStd.date(from: s) {
+                return sanitizedResetDate(d)
+            }
+            if let v = Double(s), v.isFinite {
+                let secs = v > 1_000_000_000_000 ? (v / 1000.0) : v
+                return sanitizedResetDate(Date(timeIntervalSince1970: secs))
+            }
+        }
+        return nil
     }
 
     /// Boundary-honest integer percentage:

@@ -799,13 +799,6 @@ private enum EcosystemExec {
     }
 
     static func parseISODate(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-        let fFrac = ISO8601DateFormatter()
-        fFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = fFrac.date(from: raw) { return d }
-
-        let fStd = ISO8601DateFormatter()
-        fStd.formatOptions = [.withInternetDateTime]
-        return fStd.date(from: raw)
+        QuotaSnapshot.parseValidResetDate(from: raw)
     }
 }

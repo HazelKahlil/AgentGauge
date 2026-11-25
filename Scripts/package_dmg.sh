@@ -33,20 +33,79 @@ trap cleanup EXIT
 cp -R "${APP_PATH}" "${STAGE_DIR}/AgentGauge.app"
 ln -s /Applications "${STAGE_DIR}/Applications"
 
-# One-click helper inside DMG so legacy v1.1.0–v1.2.1 users can cleanly quit old memory process & overwrite in 1 second
+# One-click atomic helper inside DMG so legacy v1.1.0–v1.2.1 users can safely upgrade with rollback protection
 cat > "${STAGE_DIR}/双击一键覆盖旧版.command" <<'HELPER'
 #!/usr/bin/env bash
 set -euo pipefail
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-echo "正在关闭旧版 AgentGauge 进程并覆盖安装最新版本..."
+TARGET_APP="/Applications/AgentGauge.app"
+STAGE_APP="/Applications/.AgentGauge.dmg-stage.$$.app"
+cleanup() { rm -rf "${STAGE_APP}" 2>/dev/null || true; }
+trap cleanup EXIT
+
+echo "正在准备并校验新版 AgentGauge..."
+rm -rf "${STAGE_APP}" 2>/dev/null || true
+cp -R "${SRC_DIR}/AgentGauge.app" "${STAGE_APP}"
+/usr/bin/xattr -cr "${STAGE_APP}" 2>/dev/null || true
+codesign --verify --deep --strict "${STAGE_APP}"
+
+echo "正在关闭旧版进程并原子替换安装..."
 pkill -f "/Applications/AgentGauge.app/Contents/MacOS/AgentGauge" 2>/dev/null || true
 sleep 0.4
-rm -rf "/Applications/AgentGauge.app"
-cp -R "${SRC_DIR}/AgentGauge.app" "/Applications/AgentGauge.app"
-/usr/bin/xattr -cr "/Applications/AgentGauge.app" 2>/dev/null || true
-open -a "/Applications/AgentGauge.app"
-echo "✅ 已成功升级并启动新版 AgentGauge！（后续版本均支持应用内一键远程推送更新）"
-sleep 1.2
+
+SWAPPED=0
+SWAP_HELPER="${STAGE_APP}/Contents/MacOS/AgentGaugeCleanup"
+INSTALLED_HELPER="${TARGET_APP}/Contents/MacOS/AgentGaugeCleanup"
+if [ -d "${TARGET_APP}" ]; then
+  if [ -x "${SWAP_HELPER}" ] && "${SWAP_HELPER}" --atomic-swap "${STAGE_APP}" "${TARGET_APP}"; then
+    SWAPPED=1
+  else
+    BACKUP_APP="/Applications/.AgentGauge.backup.$$.app"
+    rm -rf "${BACKUP_APP}" 2>/dev/null || true
+    if mv "${TARGET_APP}" "${BACKUP_APP}" && mv "${STAGE_APP}" "${TARGET_APP}"; then
+      STAGE_APP="${BACKUP_APP}"
+      SWAPPED=1
+    else
+      [ -d "${BACKUP_APP}" ] && [ ! -d "${TARGET_APP}" ] && mv "${BACKUP_APP}" "${TARGET_APP}" 2>/dev/null || true
+      echo "❌ 替换安装失败，已保留原版本" >&2
+      exit 1
+    fi
+  fi
+else
+  mv "${STAGE_APP}" "${TARGET_APP}"
+fi
+
+LAUNCH_OK=0
+if /usr/bin/open -n "${TARGET_APP}"; then
+  for _ in $(seq 1 25); do
+    sleep 0.15
+    if pgrep -f "${TARGET_APP}/Contents/MacOS/AgentGauge" >/dev/null 2>&1; then
+      LAUNCH_OK=1
+      break
+    fi
+  done
+fi
+
+if [ "${LAUNCH_OK}" -eq 1 ]; then
+  rm -rf "${STAGE_APP}" 2>/dev/null || true
+  echo "✅ 已成功升级并启动新版 AgentGauge！（后续版本均支持应用内一键远程推送更新）"
+  sleep 1.2
+  exit 0
+fi
+
+echo "⚠️ 新版启动检测失败，正在自动回滚至原版本..." >&2
+if [ "${SWAPPED}" -eq 1 ] && [ -d "${STAGE_APP}" ]; then
+  if [ -x "${INSTALLED_HELPER}" ] && "${INSTALLED_HELPER}" --atomic-swap "${STAGE_APP}" "${TARGET_APP}"; then
+    rm -rf "${STAGE_APP}" 2>/dev/null || true
+  else
+    FAILED_APP="/Applications/.AgentGauge.failed.$$.app"
+    mv "${TARGET_APP}" "${FAILED_APP}" 2>/dev/null || true
+    mv "${STAGE_APP}" "${TARGET_APP}" 2>/dev/null || true
+    rm -rf "${FAILED_APP}" 2>/dev/null || true
+  fi
+  /usr/bin/open -n "${TARGET_APP}" 2>/dev/null || true
+fi
+exit 1
 HELPER
 chmod +x "${STAGE_DIR}/双击一键覆盖旧版.command"
 
@@ -73,7 +132,7 @@ ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${OTA_ZIP_PATH}"
 ZIP_SHA256=$(shasum -a 256 "${OTA_ZIP_PATH}" | awk '{print $1}')
 
 # 3. Cryptographically sign OTA Manifest (`Website/updates/latest.json`) with Ed25519 Private Key
-RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 全平台 3x/5x/20x 倍率引擎与零阻塞 Dock 悬停性能优化}"
+RELEASE_TITLE="${RELEASE_TITLE:-v${SHORT_VERSION} · 全链路 Ed25519 验签原子回滚与多账号隔离加固}"
 SHORT_VERSION="${SHORT_VERSION}" \
 BUILD_VERSION="${BUILD_VERSION}" \
 ZIP_SHA256="${ZIP_SHA256}" \
@@ -111,9 +170,9 @@ let manifest: [String: Any] = [
     "urgency": "recommended",
     "title": title,
     "notes": [
-        "全平台统一 3x / 5x / 20x 套餐倍率引擎：覆盖 Antigravity / Gemini AI Ultra、ChatGPT Pro (5x/20x)、Claude Max (5x/20x)、Cursor (Pro+ 3x / Ultra 20x) 与 SuperGrok Heavy (20x)，菜单栏套餐徽章支持一键切换并按「应用 + 邮箱」独立记忆",
-        "消除 Dock 60Hz/30Hz 主线程高频同步 IPC（缓存 Dock 方位与 com.apple.dock.server Mach 端口、PID 零开销复用、发送超时压缩至 16ms），悬停滑行彻底零卡顿",
-        "引入 Antigravity / Codex 活动感知本地缓存，闲置期后台 CLI 唤醒次数降低约 65%；同步修复 agy 1.5.16 异步 plan_tier 竞态与多变体应用 tick() 图标锁定"
+        "全链路强制 Ed25519 数字签名与 SHA-256 验签（覆盖 CDN、GitHub 回退源与一行安装脚本），并升级为内核级 renamex_np 原子交换 + 启动失败自动回滚",
+        "修复并发网页刷新队列竞态、Dock bootstrap 端口泄漏及 Claude Keychain 阻塞风险，将 Dock Mach 通信迁出主线程并补齐失败补偿释放",
+        "严格加固多账号、单模型池与跨产品隔离（Cursor ↔ Grok Bot 精确槽位与双有效重置时间校验、Antigravity 缺池不串池、Gemini 桌面版隔离 CLI 缓存、全量过滤 1970 哨兵时间）"
     ],
     "zipUrl": "https://usage.komorebi.date/downloads/AgentGauge-macOS.zip",
     "fallbackZipUrl": "https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.zip",

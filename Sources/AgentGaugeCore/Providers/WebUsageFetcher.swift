@@ -14,6 +14,7 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
 
     private var loginWindows: [AgentID: NSWindow] = [:]
     private var hiddenWebView: WKWebView?
+    private var activeRequestID: UInt64 = 0
     private var pendingContinuation: CheckedContinuation<WebFetchOutcome, Never>?
     private var pendingScript: String?
     private var pollTask: Task<Void, Never>?
@@ -118,6 +119,28 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
         return nil
     }
 
+    /// Strict FIFO single-consumer acquisition with zero ownership-handoff window:
+    /// When a slot is handed to the next waiter, `isEvaluating` stays `true` seamlessly so no third caller can barge in.
+    private func acquireEvaluationSlot() async {
+        if !isEvaluating {
+            isEvaluating = true
+            return
+        }
+        await withCheckedContinuation { cont in
+            waiters.append(cont)
+        }
+    }
+
+    private func releaseEvaluationSlot() {
+        if !waiters.isEmpty {
+            // Transfer ownership directly while keeping `isEvaluating == true`!
+            let next = waiters.removeFirst()
+            next.resume()
+        } else {
+            isEvaluating = false
+        }
+    }
+
     public func evaluatePageOutcome(
         url: URL,
         script: String,
@@ -127,21 +150,12 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
             return .missingCookies
         }
 
-        if isEvaluating {
-            await withCheckedContinuation { cont in
-                waiters.append(cont)
-            }
-        }
-        isEvaluating = true
-        defer {
-            isEvaluating = false
-            if !waiters.isEmpty {
-                let next = waiters.removeFirst()
-                next.resume()
-            }
-        }
+        await acquireEvaluationSlot()
+        defer { releaseEvaluationSlot() }
 
         let ruleList = await ensureLightweightRules()
+        activeRequestID &+= 1
+        let reqID = activeRequestID
 
         return await withCheckedContinuation { continuation in
             self.pendingContinuation = continuation
@@ -160,9 +174,15 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
             self.hiddenWebView = wv
 
             self.timeoutTask?.cancel()
-            self.timeoutTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 10_500_000_000)
-                self?.finishPending(result: .transientFailure)
+            self.timeoutTask = Task { @MainActor [weak self] in
+                do {
+                    try await Task.sleep(nanoseconds: 10_500_000_000)
+                } catch {
+                    // Cancelled cleanly — never finish a newer or already-settled request!
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                self?.finishPending(requestID: reqID, result: .transientFailure)
             }
 
             // Keep JS/CSS bundles cached so SPA pages hydrate in <1s without main-thread stalls!
@@ -180,29 +200,46 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         guard webView === hiddenWebView else { return }
         // Start polling right after DOM commit so slow 3rd-party analytics subresources NEVER cause timeouts!
-        startDOMPolling(for: webView, initialDelayNs: 1_200_000_000)
+        startDOMPolling(for: webView, requestID: activeRequestID, initialDelayNs: 1_200_000_000)
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === hiddenWebView else { return }
-        startDOMPolling(for: webView, initialDelayNs: 450_000_000)
+        startDOMPolling(for: webView, requestID: activeRequestID, initialDelayNs: 450_000_000)
     }
 
-    private func startDOMPolling(for webView: WKWebView, initialDelayNs: UInt64) {
-        guard let script = pendingScript else { return }
+    private func startDOMPolling(for webView: WKWebView, requestID reqID: UInt64, initialDelayNs: UInt64) {
+        guard reqID == activeRequestID, let script = pendingScript else { return }
         pollTask?.cancel()
         pollTask = Task { @MainActor [weak self] in
             let delays: [UInt64] = [initialDelayNs, 1_100_000_000, 1_400_000_000, 1_800_000_000]
             var lastData: Data? = nil
             for (idx, delay) in delays.enumerated() {
-                try? await Task.sleep(nanoseconds: delay)
-                guard !Task.isCancelled, let self, self.hiddenWebView === webView else { return }
+                do {
+                    try await Task.sleep(nanoseconds: delay)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled,
+                      let self,
+                      self.activeRequestID == reqID,
+                      self.hiddenWebView === webView else {
+                    return
+                }
                 do {
                     let cleanExpr = script
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                         .trimmingCharacters(in: CharacterSet(charactersIn: ";"))
                     let wrapped = "return await (\(cleanExpr));"
                     let raw: Any? = try await webView.callAsyncJavaScript(wrapped, arguments: [:], in: nil, contentWorld: .page)
+
+                    // Re-verify identity & cancellation AFTER suspension so a late JS callback NEVER corrupts a newer request!
+                    guard !Task.isCancelled,
+                          self.activeRequestID == reqID,
+                          self.hiddenWebView === webView else {
+                        return
+                    }
+
                     var data: Data? = nil
                     if let str = raw as? String {
                         data = str.data(using: .utf8)
@@ -213,23 +250,33 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
                         lastData = data
                         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                             if (obj["loggedIn"] as? Bool) == true {
-                                self.finishPending(result: .payload(data))
+                                self.finishPending(requestID: reqID, result: .payload(data))
                                 return
                             }
                             if (obj["isLoginRedirect"] as? Bool) == true {
-                                self.finishPending(result: .payload(data))
+                                self.finishPending(requestID: reqID, result: .payload(data))
                                 return
                             }
                         }
                     }
                 } catch {
+                    guard !Task.isCancelled,
+                          self.activeRequestID == reqID,
+                          self.hiddenWebView === webView else {
+                        return
+                    }
                     // Page still loading JS context; retry on next poll tick
                 }
                 if idx == delays.count - 1 {
+                    guard !Task.isCancelled,
+                          self.activeRequestID == reqID,
+                          self.hiddenWebView === webView else {
+                        return
+                    }
                     if let lastData {
-                        self.finishPending(result: .payload(lastData))
+                        self.finishPending(requestID: reqID, result: .payload(lastData))
                     } else {
-                        self.finishPending(result: .transientFailure)
+                        self.finishPending(requestID: reqID, result: .transientFailure)
                     }
                 }
             }
@@ -238,17 +285,21 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         if webView === hiddenWebView {
-            finishPending(result: .transientFailure)
+            finishPending(requestID: activeRequestID, result: .transientFailure)
         }
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if webView === hiddenWebView {
-            finishPending(result: .transientFailure)
+            finishPending(requestID: activeRequestID, result: .transientFailure)
         }
     }
 
-    private func finishPending(result: WebFetchOutcome) {
+    private func finishPending(requestID: UInt64, result: WebFetchOutcome) {
+        guard requestID == activeRequestID, let cont = pendingContinuation else {
+            return
+        }
+        pendingContinuation = nil
         pollTask?.cancel()
         pollTask = nil
         timeoutTask?.cancel()
@@ -258,8 +309,6 @@ public final class WebUsageFetcher: NSObject, WKNavigationDelegate {
         hiddenWebView?.loadHTMLString("", baseURL: nil)
         hiddenWebView = nil
         pendingScript = nil
-        let cont = pendingContinuation
-        pendingContinuation = nil
-        cont?.resume(returning: result)
+        cont.resume(returning: result)
     }
 }

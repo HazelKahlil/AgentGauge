@@ -19,6 +19,9 @@ echo "   • OTA 更新包: Website/downloads/AgentGauge-macOS.zip"
 echo "   • 安装镜像: Website/downloads/AgentGauge-v${SHORT_VERSION}-macOS.dmg & AgentGauge-macOS.dmg"
 
 if [[ "${1:-}" == "--publish" ]]; then
+  echo "🛡️  正在执行发布前强制门禁（未通过将中止上传与部署）..."
+  ./Scripts/verify_release.sh --require-artifacts
+
   TAG="v${SHORT_VERSION}"
   echo "🚀 正在发布 GitHub Release (${TAG})..."
   if gh release view "${TAG}" >/dev/null 2>&1; then

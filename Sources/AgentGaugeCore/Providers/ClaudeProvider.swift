@@ -17,7 +17,8 @@ private final class ClaudeKeychainCache: @unchecked Sendable {
         let now = Date()
         lock.lock()
         let hasValidToken = ((cachedOAuth?["accessToken"] as? String)?.isEmpty == false)
-        let ttl: TimeInterval = hasValidToken ? 300.0 : 15.0
+        // Longer 60s cooldown on miss/timeout so macOS Keychain prompts cannot repeatedly stall refreshes
+        let ttl: TimeInterval = hasValidToken ? 300.0 : 60.0
         if now.timeIntervalSince(lastRead) < ttl {
             let val = cachedOAuth
             lock.unlock()
@@ -35,20 +36,51 @@ private final class ClaudeKeychainCache: @unchecked Sendable {
         var parsed: [String: Any]? = nil
         do {
             try proc.run()
-            let data = out.fileHandleForReading.readDataToEndOfFile()
-            proc.waitUntilExit()
-            if proc.terminationStatus == 0,
-               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                parsed = (root["claudeAiOauth"] as? [String: Any]) ?? root
+            let readDone = DispatchSemaphore(value: 0)
+            let dataBox = LockedDataBox()
+            DispatchQueue.global(qos: .utility).async {
+                let d = out.fileHandleForReading.readDataToEndOfFile()
+                dataBox.set(d)
+                readDone.signal()
             }
+
+            let waitResult = readDone.wait(timeout: .now() + .milliseconds(2500))
+            if waitResult == .success {
+                // Bounded exit wait after EOF
+                let exitDeadline = Date().addingTimeInterval(0.3)
+                while proc.isRunning && Date() < exitDeadline {
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+                if proc.isRunning {
+                    SubprocessReaper.terminateAndReap(proc)
+                } else {
+                    proc.waitUntilExit()
+                    let data = dataBox.get()
+                    if proc.terminationStatus == 0,
+                       let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        parsed = (root["claudeAiOauth"] as? [String: Any]) ?? root
+                    }
+                }
+            } else {
+                // Hard timeout (e.g. unanswered macOS Keychain prompt) -> terminate & reap immediately!
+                SubprocessReaper.terminateAndReap(proc)
+            }
+            try? out.fileHandleForReading.close()
         } catch {}
 
         lock.lock()
         cachedOAuth = parsed
-        lastRead = now
+        lastRead = Date()
         lock.unlock()
         return parsed
     }
+}
+
+private final class LockedDataBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func set(_ d: Data) { lock.lock(); data = d; lock.unlock() }
+    func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
 }
 
 public struct ClaudeProvider: UsageProvider {
@@ -358,9 +390,9 @@ public struct ClaudeProvider: UsageProvider {
             }
         }
 
-        // 2. macOS Keychain "Claude Code-credentials"
-        if let kc = ClaudeKeychainCache.shared.readOAuthDict() {
-            if accessToken == nil, let tok = (kc["accessToken"] as? String)?.nilIfEmpty {
+        // 2. macOS Keychain "Claude Code-credentials" ONLY when file credentials did not supply a valid accessToken!
+        if accessToken == nil, let kc = ClaudeKeychainCache.shared.readOAuthDict() {
+            if let tok = (kc["accessToken"] as? String)?.nilIfEmpty {
                 let expMs = (kc["expiresAt"] as? Double) ?? 0
                 if expMs <= 0 || expMs > Date().timeIntervalSince1970 * 1000.0 {
                     accessToken = tok
@@ -429,10 +461,6 @@ public struct ClaudeProvider: UsageProvider {
                 return nil
             }
 
-            let isoFrac = ISO8601DateFormatter()
-            isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let isoStd = ISO8601DateFormatter()
-
             struct RawClaudeBucket {
                 let key: String
                 let label: String
@@ -455,8 +483,7 @@ public struct ClaudeProvider: UsageProvider {
                       let util = (obj["utilization"] as? NSNumber)?.doubleValue else { continue }
                 // Anthropic `/api/oauth/usage` returns `utilization` in 0..100 percentage points
                 let rem = Self.remainingPercent(fromAnthropicUtilization: util)
-                let resetStr = obj["resets_at"] as? String
-                let resetDate = resetStr.flatMap { isoFrac.date(from: $0) ?? isoStd.date(from: $0) }
+                let resetDate = QuotaSnapshot.parseValidResetDate(from: obj["resets_at"])
                 let resetText: String? = (resetDate == nil && key == "five_hour" && rem >= 99.95) ? "未消耗" : nil
                 parsed.append(RawClaudeBucket(
                     key: key,

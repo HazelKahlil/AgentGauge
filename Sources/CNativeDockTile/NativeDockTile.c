@@ -52,6 +52,10 @@ static mach_port_t acquire_dock_server_port(void) {
     }
     mach_port_t dock_port = MACH_PORT_NULL;
     kern_return_t kr = bootstrap_look_up(bp, "com.apple.dock.server", &dock_port);
+    // Always release the copied bootstrap send right returned by task_get_special_port!
+    if (bp != MACH_PORT_NULL) {
+        mach_port_deallocate(mach_task_self(), bp);
+    }
     if (kr != KERN_SUCCESS) {
         pthread_mutex_unlock(&dock_port_lock);
         return MACH_PORT_NULL;
@@ -158,8 +162,10 @@ int32_t native_dock_draw_tile(NativeDockPSN psn, CGImageRef image, uint32_t side
 }
 
 int32_t native_dock_release_tile(NativeDockPSN psn) {
+    // Strictly bounded <= 24ms total worst-case budget (16ms primary + at most one 8ms stale-port recovery retry).
+    const mach_msg_timeout_t budgets[2] = { 16, 8 };
     kern_return_t kr = KERN_FAILURE;
-    for (int attempt = 0; attempt < 3; attempt++) {
+    for (int attempt = 0; attempt < 2; attempt++) {
         mach_port_t dock_port = acquire_dock_server_port();
         if (dock_port == MACH_PORT_NULL) return KERN_FAILURE;
 
@@ -181,13 +187,15 @@ int32_t native_dock_release_tile(NativeDockPSN psn) {
             sizeof(DockNativeTileReleaseMsg),
             0,
             MACH_PORT_NULL,
-            24,
+            budgets[attempt],
             MACH_PORT_NULL
         );
         if (kr == KERN_SUCCESS) break;
-        if (kr != MACH_SEND_TIMED_OUT) {
-            invalidate_dock_server_port(dock_port);
+        if (kr == MACH_SEND_TIMED_OUT) {
+            // Do not multiply timeout waits back-to-back; caller retains PSN in pendingReleases for compensation.
+            break;
         }
+        invalidate_dock_server_port(dock_port);
     }
 
     return (int32_t)kr;

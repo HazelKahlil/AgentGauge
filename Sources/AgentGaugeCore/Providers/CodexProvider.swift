@@ -6,25 +6,27 @@ private final class CodexSnapshotCache: @unchecked Sendable {
     static let shared = CodexSnapshotCache()
     private let lock = NSLock()
     private var cached: QuotaSnapshot?
+    private var cachedIdentity: String?
     private var cachedAt: Date = .distantPast
 
     func invalidate() {
         lock.lock()
         cached = nil
+        cachedIdentity = nil
         cachedAt = .distantPast
         lock.unlock()
     }
 
-    func get(isAppRunning: Bool, isWorking: Bool, latestActivityMtime: Date?) -> QuotaSnapshot? {
+    func get(identityKey: String, isAppRunning: Bool, isWorking: Bool, latestActivityMtime: Date?) -> QuotaSnapshot? {
         lock.lock()
         defer { lock.unlock() }
-        guard let snap = cached else { return nil }
+        guard let snap = cached, cachedIdentity == identityKey else { return nil }
         let now = Date()
-        if let reset = snap.resetsAt, now >= reset {
+        if let reset = QuotaSnapshot.sanitizedResetDate(snap.resetsAt), now >= reset {
             return nil
         }
         for w in snap.windows {
-            if let r = w.resetsAt, now >= r {
+            if let r = QuotaSnapshot.sanitizedResetDate(w.resetsAt), now >= r {
                 return nil
             }
         }
@@ -45,9 +47,10 @@ private final class CodexSnapshotCache: @unchecked Sendable {
         return snap
     }
 
-    func set(_ snap: QuotaSnapshot) {
+    func set(_ snap: QuotaSnapshot, identityKey: String) {
         lock.lock()
         cached = snap
+        cachedIdentity = identityKey
         cachedAt = Date()
         lock.unlock()
     }
@@ -69,8 +72,11 @@ public struct CodexProvider: UsageProvider {
                 !NSRunningApplication.runningApplications(withBundleIdentifier: bid).isEmpty
             }
         }
+        // Always read current local auth identity BEFORE checking cache so switching Codex accounts immediately invalidates stale cache!
+        let localAuth = Self.readLocalAuthIdentity()
+        let identityKey = localAuth.identityKey
         let latestActivity = Self.latestCodexActivityMtime()
-        if let recent = CodexSnapshotCache.shared.get(isAppRunning: isAppRunning, isWorking: isWorking, latestActivityMtime: latestActivity) {
+        if let recent = CodexSnapshotCache.shared.get(identityKey: identityKey, isAppRunning: isAppRunning, isWorking: isWorking, latestActivityMtime: latestActivity) {
             return QuotaSnapshot(
                 agentID: .codex,
                 remainingPercent: recent.remainingPercent,
@@ -89,8 +95,6 @@ public struct CodexProvider: UsageProvider {
             )
         }
 
-        let localAuth = Self.readLocalAuthIdentity()
-
         guard let codexPath = Self.findCodexBinary() else {
             return QuotaSnapshot(
                 agentID: .codex,
@@ -99,8 +103,8 @@ public struct CodexProvider: UsageProvider {
                 planTier: localAuth.planTier,
                 isWorking: isWorking,
                 sourceDescription: "Codex CLI 未找到",
-                requiresWebLogin: localAuth.email == nil,
-                errorMessage: "未找到 codex 可执行文件"
+                requiresWebLogin: false,
+                errorMessage: "未找到 codex 可执行文件（请在终端安装并登录 codex）"
             )
         }
 
@@ -124,8 +128,8 @@ public struct CodexProvider: UsageProvider {
                     planTier: resolvedPlan,
                     isWorking: isWorking,
                     sourceDescription: "Codex app-server",
-                    requiresWebLogin: resolvedEmail == nil,
-                    errorMessage: "未返回 rateLimits（请在终端登录 codex）"
+                    requiresWebLogin: false,
+                    errorMessage: "未返回 rateLimits（请在终端运行 `codex login` 登录）"
                 )
             }
 
@@ -213,7 +217,7 @@ public struct CodexProvider: UsageProvider {
                 sourceDescription: "Codex 本地账号"
             )
             if limiting != nil {
-                CodexSnapshotCache.shared.set(snap)
+                CodexSnapshotCache.shared.set(snap, identityKey: identityKey)
             }
             return snap
         } catch {
@@ -234,15 +238,22 @@ public struct CodexProvider: UsageProvider {
         let email: String?
         let rawPlan: String?
         let planTier: String?
+        let authMtime: TimeInterval
+
+        var identityKey: String {
+            let em = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "none"
+            return "\(em)|\(Int(authMtime))"
+        }
     }
 
     private static func readLocalAuthIdentity() -> LocalAuthInfo {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let authPath = "\(home)/.codex/auth.json"
+        let authMtime = ((try? FileManager.default.attributesOfItem(atPath: authPath))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: authPath)),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tokens = root["tokens"] as? [String: Any] else {
-            return LocalAuthInfo(email: nil, rawPlan: nil, planTier: nil)
+            return LocalAuthInfo(email: nil, rawPlan: nil, planTier: nil, authMtime: authMtime)
         }
 
         var email: String?
@@ -262,7 +273,8 @@ public struct CodexProvider: UsageProvider {
         return LocalAuthInfo(
             email: email,
             rawPlan: rawPlan,
-            planTier: formatOpenAIPlan(rawPlan: rawPlan, workspaceName: nil)
+            planTier: formatOpenAIPlan(rawPlan: rawPlan, workspaceName: nil),
+            authMtime: authMtime
         )
     }
 
@@ -454,10 +466,8 @@ public struct CodexProvider: UsageProvider {
         return nil
     }
 
-    private static func dateValue(_ any: Any?) -> Date? {
-        if let ts = any as? TimeInterval { return Date(timeIntervalSince1970: ts) }
-        if let i = any as? Int { return Date(timeIntervalSince1970: TimeInterval(i)) }
-        return nil
+    static func dateValue(_ any: Any?) -> Date? {
+        QuotaSnapshot.parseValidResetDate(from: any)
     }
 
     private static func windowLabel(mins: Int?, fallback: String) -> String {

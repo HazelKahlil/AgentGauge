@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.3.3-141413?style=flat-square" alt="Release v1.3.3" /></a>
+    <a href="https://github.com/HazelKahlil/AgentGauge/releases/latest"><img src="https://img.shields.io/badge/release-v1.3.4-141413?style=flat-square" alt="Release v1.3.4" /></a>
     <img src="https://img.shields.io/badge/platform-macOS%2026%20Tahoe%2B-3d3c39?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 Tahoe+" />
     <img src="https://img.shields.io/badge/engine-Swift%206%20%C2%B7%20Metal-587ba3?style=flat-square" alt="Swift 6 + Metal" />
     <img src="https://img.shields.io/badge/supported-30%2B%20AI%20Models%20%26%20Plans-478577?style=flat-square" alt="30+ AI Models & Plans" />
@@ -61,8 +61,9 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ---
 
-## What's New in v1.3.3 (See [CHANGELOG.md](./CHANGELOG.md))
+## What's New in v1.3.4 (See [CHANGELOG.md](./CHANGELOG.md))
 
+- **Security, Concurrency & Account-Isolation Audit Hardening (`v1.3.4`)**: Enforced fail-closed Ed25519 + SHA-256 verification across all OTA paths (including GitHub fallback & `install.sh`) with kernel-atomic `renamex_np` swaps and auto-rollback; eliminated `WebUsageFetcher` FIFO continuation races, `NativeDockTile.c` bootstrap port leaks, and main-thread Dock IPC blocking; tightened `Cursor` ↔ `Grok Bot`, Antigravity single-pool, `Gemini.app` CLI cache, and per-account multiplier isolation; and wired mandatory delivered-ZIP verification directly into `push_remote_update.sh --publish`.
 - **Unified `3x / 5x / 20x` Multipliers, Zero-IPC Dock Optimization & Release Guardrails (`v1.3.3`)**: Unified `3x / 5x / 20x` plan badges and per-`(app, email)` 1-click Menu Bar switching across Antigravity/Gemini (`AI Ultra · 5x / 20x`), ChatGPT/Codex (`Pro Lite · 5x` / `Pro · 20x`), Claude (`Max · 5x / 20x`), Cursor (`Pro+ · 3x` / `Ultra · 20x`), and Grok (`Heavy · 20x`); fixed `agy 1.5.16` delayed `plan_tier` sync; eliminated 60Hz/30Hz main-thread Dock IPC stalls (cached orientation & Mach port, `16ms` send timeout, `<1µs` PID reuse) plus activity-aware CLI caching (~65% fewer idle spawns); and added `AGENTS.md`, single-source `VERSION`, offline `swift test`, and `Scripts/verify_release.sh`.
 - **WYSIWYG Water Colors, `Claude / GPT` Model Naming & `AI Ultra · 5x / 20x` Tiers (`v1.3.2`)**: Dock water and icon badges now stay 100% faithful to your selected custom or brand color at every level (keeping `<= 30%` amber / `<= 15%` red warnings cleanly on card progress bars), Antigravity's third-party pool displays real model names **`Claude / GPT`** instead of vendor name `Anthropic`, `Google AI Ultra (5x / 20x)` badges match ChatGPT's multiplier display, and `1970-01-01` sentinel reset timestamps on untouched `100%` pools are properly filtered to `未消耗`.
 - **Strict Cross-Product Quota Isolation (`v1.3.1`)**: Completely decoupled standalone consumer `Gemini.app` (`gemini.google.com/usage` current + weekly limits) from `Antigravity` developer pools and decoupled consumer `Grok.app` from `Grok Bot` coding pools, added reset-epoch agreement verification for `Cursor` ↔ `Grok Bot`, stripped chat bubbles/code blocks during web quota scraping to prevent conversational false positives, and locked multi-variant Dock tiles (`Zed` / `Zed Preview`, `WorkBuddy` / `CodeBuddy`) strictly to the hovered bundle ID.
@@ -80,7 +81,7 @@ Hover any AI app in your Dock and its icon comes alive as a 16-bit half-float Me
 
 ### Download Installer (`.dmg`)
 
-- **GitHub Releases (Primary)**: [**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg) (`v1.3.3`, `2.9 MB`, Apple Silicon / macOS 26+)
+- **GitHub Releases (Primary)**: [**AgentGauge-macOS.dmg**](https://github.com/HazelKahlil/AgentGauge/releases/latest/download/AgentGauge-macOS.dmg) (`v1.3.4`, `2.9 MB`, Apple Silicon / macOS 26+)
 - **Official Website Mirror (Fast Global / China CDN)**: [**usage.komorebi.date/downloads/AgentGauge-macOS.dmg**](https://usage.komorebi.date/downloads/AgentGauge-macOS.dmg)
 - **One-Line Install / Overwrite Upgrade from Terminal**:
   ```bash

@@ -201,20 +201,19 @@ public struct AntigravityProvider: UsageProvider {
     }
 
     /// Re-evaluates cached Antigravity dual-pool buckets in <0.5ms without spawning `agy` CLI.
-    /// Used when user switches models in Antigravity Desktop or toggles pool/tier settings.
+    /// Returns raw un-overridden `planTier` by default (`ultraMultiplier: .auto`) so `AgentGaugeStore` applies per-account overrides cleanly once.
     public static func reevaluateFromCache(
         poolFocus: AntigravityPoolFocus? = nil,
-        ultraMultiplier: AntigravityUltraMultiplier? = nil
+        ultraMultiplier: AntigravityUltraMultiplier = .auto
     ) -> QuotaSnapshot? {
         guard let payload = AntigravityEndpointCache.shared.peekUnexpiredPayload() else { return nil }
         let focus = poolFocus ?? currentSavedPoolFocus()
-        let mult = ultraMultiplier ?? currentSavedUltraMultiplier(forEmail: payload.email)
         let isWorking = checkIsWorking()
         let desktopPool = (focus == .autoActiveModel) ? detectActiveDesktopPool() : nil
         return buildSnapshot(
             from: payload,
             poolFocus: focus,
-            ultraMultiplier: mult,
+            ultraMultiplier: ultraMultiplier,
             detectedDesktopPool: desktopPool,
             isWorking: isWorking
         )
@@ -230,8 +229,7 @@ public struct AntigravityProvider: UsageProvider {
 
         let latestMtime = Self.latestLocalActivityMtime()
         if let recent = AntigravityEndpointCache.shared.getPayload(isAppRunning: isAppRunning, isWorking: isWorking, latestActivityMtime: latestMtime) {
-            let mult = Self.currentSavedUltraMultiplier(forEmail: recent.email)
-            if let snap = Self.buildSnapshot(from: recent, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: desktopPool, isWorking: isWorking) {
+            if let snap = Self.buildSnapshot(from: recent, poolFocus: focus, ultraMultiplier: .auto, detectedDesktopPool: desktopPool, isWorking: isWorking) {
                 return snap
             }
         }
@@ -241,8 +239,7 @@ public struct AntigravityProvider: UsageProvider {
         }) {
             AntigravityEndpointCache.shared.setPayload(freshPayload)
             let refreshedDesktopPool = (focus == .autoActiveModel) ? Self.detectActiveDesktopPool() : nil
-            let mult = Self.currentSavedUltraMultiplier(forEmail: freshPayload.email)
-            if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, ultraMultiplier: mult, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
+            if let snap = Self.buildSnapshot(from: freshPayload, poolFocus: focus, ultraMultiplier: .auto, detectedDesktopPool: refreshedDesktopPool, isWorking: isWorking) {
                 return snap
             }
         }
@@ -595,15 +592,46 @@ public struct AntigravityProvider: UsageProvider {
             detectedDesktopPool ?? payload.cliFallbackPool
         }
 
+        // Strict pool boundary isolation:
+        // Fixed-pool (`geminiOnly`, `anthropicOnly`) and active-model modes NEVER borrow the sibling pool as primary!
+        // Only `.minBottleneck` compares both pools.
         let targetPoolBuckets: [ParsedAGYBucket] = switch activePool {
-        case .gemini:    geminiBuckets.isEmpty ? buckets : geminiBuckets
-        case .anthropic: anthropicBuckets.isEmpty ? buckets : anthropicBuckets
+        case .gemini:    geminiBuckets
+        case .anthropic: anthropicBuckets
         case .other:     buckets
         }
 
-        let primaryBucket = targetPoolBuckets.min(by: {
+        let resolvedPlanTier = applyUltraMultiplier(payload.planTier, override: ultraMultiplier)
+
+        guard let primaryBucket = targetPoolBuckets.min(by: {
             ($0.percent, $0.isWeekly ? 0 : 1) < ($1.percent, $1.isWeekly ? 0 : 1)
-        }) ?? buckets[0]
+        }) else {
+            // Selected pool is missing from current payload -> surface `remainingPercent: nil` while keeping sibling pool rows non-primary
+            let fallbackRows = buckets
+                .sorted(by: { ($0.isWeekly ? 1 : 0, $0.key) < ($1.isWeekly ? 1 : 0, $1.key) })
+                .map { b in
+                    QuotaWindow(
+                        label: b.label,
+                        remainingPercent: b.percent,
+                        resetsAt: b.resetsAt,
+                        resetText: b.resetText,
+                        isPrimary: false
+                    )
+                }
+            return QuotaSnapshot(
+                agentID: .antigravity,
+                remainingPercent: nil,
+                accountEmail: payload.email,
+                planTier: resolvedPlanTier,
+                primaryLabel: activePool.displayTitle,
+                windows: fallbackRows,
+                subtitle: "所选 \(activePool.displayTitle) 池当前无返回数据",
+                isWorking: isWorking,
+                sourceDescription: "Antigravity CLI",
+                updatedAt: payload.fetchedAt,
+                errorMessage: "所选 \(activePool.displayTitle) 池暂无数据（未混用其他模型池）"
+            )
+        }
 
         // Order windows deterministically so Row 0 (`isPrimary = true`) ALWAYS matches Hero % & countdown:
         // 1) Active pool limiting bucket (`isPrimary = true`)
@@ -652,8 +680,6 @@ public struct AntigravityProvider: UsageProvider {
             }
             return nil
         }()
-
-        let resolvedPlanTier = applyUltraMultiplier(payload.planTier, override: ultraMultiplier)
 
         return QuotaSnapshot(
             agentID: .antigravity,
@@ -896,24 +922,7 @@ public struct AntigravityProvider: UsageProvider {
     }
 
     static func parseISODate(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-        let minValidEpoch: TimeInterval = 946_684_800 // 2000-01-01T00:00:00Z; filters out 1970-01-01 unset sentinels!
-        let fFrac = ISO8601DateFormatter()
-        fFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = fFrac.date(from: raw) {
-            return d.timeIntervalSince1970 >= minValidEpoch ? d : nil
-        }
-
-        let fStd = ISO8601DateFormatter()
-        fStd.formatOptions = [.withInternetDateTime]
-        if let d = fStd.date(from: raw) {
-            return d.timeIntervalSince1970 >= minValidEpoch ? d : nil
-        }
-
-        if let secs = Double(raw), secs >= minValidEpoch {
-            return Date(timeIntervalSince1970: secs)
-        }
-        return nil
+        QuotaSnapshot.parseValidResetDate(from: raw)
     }
 
     private static func latestLocalActivityMtime() -> Date? {

@@ -1,7 +1,9 @@
 #include "NativeDockTile.h"
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 typedef struct {
@@ -10,7 +12,16 @@ typedef struct {
     uint32_t low;
 } WatchCmd;
 
-int main(void) {
+int main(int argc, char **argv) {
+    // Kernel-atomic APFS directory swap helper for zero-downtime OTA/installer upgrades & rollback.
+    if (argc == 4 && strcmp(argv[1], "--atomic-swap") == 0) {
+        if (renamex_np(argv[2], argv[3], RENAME_SWAP) == 0) {
+            return 0;
+        }
+        fprintf(stderr, "renamex_np swap failed: %s\n", strerror(errno));
+        return 1;
+    }
+
     NativeDockPSN active[64];
     int count = 0;
 

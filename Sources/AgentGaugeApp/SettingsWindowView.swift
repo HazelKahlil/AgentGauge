@@ -1244,8 +1244,9 @@ private struct AgentDetailPopover: View {
             }
 
             if agentID.supportsPlanMultiplierBadge, liveSnap?.planTier != nil {
-                let email = liveSnap?.accountEmail
+                let email = liveSnap?.accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 let currentMult = store.planMultiplier(for: agentID, email: email)
+                let canEditMult = (email != nil)
                 HStack(spacing: 6) {
                     Text("套餐倍率")
                         .font(.system(size: 11))
@@ -1255,6 +1256,7 @@ private struct AgentDetailPopover: View {
                         ForEach(agentID.supportedMultiplierChoices) { mult in
                             let isSelected = (currentMult == mult)
                             Button {
+                                guard let email else { return }
                                 store.setPlanMultiplier(mult, for: agentID, email: email)
                             } label: {
                                 Text(mult.shortTitle)
@@ -1271,12 +1273,14 @@ private struct AgentDetailPopover: View {
                             }
                             .buttonStyle(.plain)
                             .focusEffectDisabled()
+                            .disabled(!canEditMult)
                         }
                     }
                     .padding(2)
                     .background(Color.primary.opacity(0.055), in: Capsule())
+                    .opacity(canEditMult ? 1.0 : 0.45)
                 }
-                .help("按当前应用与登录账号独立记忆套餐倍率（自动 / 3x / 5x / 20x），切换账号自动联动")
+                .help(canEditMult ? "按当前应用与登录账号独立记忆套餐倍率（自动 / 3x / 5x / 20x），切换账号自动联动" : "识别到具体登录邮箱后方可独立保存该账号的套餐倍率")
             }
 
             if agentID == .antigravity {

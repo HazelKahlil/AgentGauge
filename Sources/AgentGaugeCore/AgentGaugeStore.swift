@@ -70,14 +70,13 @@ public final class AgentGaugeStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(antigravityPoolFocus.rawValue, forKey: "AgentGauge.antigravityPoolFocus")
             let focus = antigravityPoolFocus
-            let email = snapshots[.antigravity]?.accountEmail
-            let mult = antigravityUltraMultiplier(forEmail: email)
             Task.detached(priority: .userInitiated) {
-                guard let updated = AntigravityProvider.reevaluateFromCache(poolFocus: focus, ultraMultiplier: mult) else { return }
+                guard let rawUpdated = AntigravityProvider.reevaluateFromCache(poolFocus: focus) else { return }
                 await MainActor.run {
                     let store = AgentGaugeStore.shared
                     guard !store.promoFrozen else { return }
-                    store.snapshots[.antigravity] = updated
+                    store.rawSnapshots[.antigravity] = rawUpdated
+                    store.snapshots[.antigravity] = store.applySavedPlanMultiplier(to: rawUpdated)
                     store.overlayManager.updateSnapshots(store.snapshots)
                 }
             }
@@ -86,32 +85,27 @@ public final class AgentGaugeStore: ObservableObject {
 
     @Published public var planMultipliersByAccount: [String: PlanMultiplierChoice] = [:]
     private var rawSnapshots: [AgentID: QuotaSnapshot] = [:]
+    private var refreshGeneration: [AgentID: UInt64] = [:]
 
-    private static func planMultiplierAccountKey(agentID: AgentID, email: String?) -> String {
-        if let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
-            return "\(agentID.rawValue)|\(em)"
+    /// Pure identity-scoped key: requires a confirmed non-empty email so multipliers NEVER leak globally or across products!
+    public static func planMultiplierAccountKey(agentID: AgentID, email: String?) -> String? {
+        guard let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty else {
+            return nil
         }
-        return agentID.rawValue
+        return "\(agentID.rawValue)|\(em)"
     }
 
     public func planMultiplier(for agentID: AgentID, email: String?) -> PlanMultiplierChoice {
-        let key = Self.planMultiplierAccountKey(agentID: agentID, email: email)
-        if let hit = planMultipliersByAccount[key] {
-            return hit
+        guard let key = Self.planMultiplierAccountKey(agentID: agentID, email: email) else {
+            return .auto
         }
-        // Share Google AI Ultra per-email annotation seamlessly between Antigravity & Gemini
-        if (agentID == .antigravity || agentID == .gemini),
-           let em = email?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !em.isEmpty {
-            let sibling: AgentID = (agentID == .antigravity) ? .gemini : .antigravity
-            if let sibHit = planMultipliersByAccount["\(sibling.rawValue)|\(em)"] {
-                return sibHit
-            }
-        }
-        return .auto
+        return planMultipliersByAccount[key] ?? .auto
     }
 
     public func setPlanMultiplier(_ choice: PlanMultiplierChoice, for agentID: AgentID, email: String?) {
-        let key = Self.planMultiplierAccountKey(agentID: agentID, email: email)
+        guard let key = Self.planMultiplierAccountKey(agentID: agentID, email: email) else {
+            return
+        }
         if choice == .auto {
             planMultipliersByAccount.removeValue(forKey: key)
         } else {
@@ -119,24 +113,36 @@ public final class AgentGaugeStore: ObservableObject {
         }
         persistPlanMultipliers()
 
-        if agentID == .antigravity || agentID == .gemini {
-            AntigravityProvider.setSavedUltraMultiplier(choice, forEmail: email)
-        }
-
-        if let raw = rawSnapshots[agentID] ?? snapshots[agentID] {
+        if let raw = rawSnapshots[agentID] {
             let updated = applySavedPlanMultiplier(to: raw)
             snapshots[agentID] = updated
             overlayManager.updateSnapshots(snapshots)
-        }
-        // Sync sibling Google app immediately if same email is active
-        if (agentID == .antigravity || agentID == .gemini),
-           let em = email?.lowercased(), !em.isEmpty {
-            let sibling: AgentID = (agentID == .antigravity) ? .gemini : .antigravity
-            if let sibRaw = rawSnapshots[sibling] ?? snapshots[sibling],
-               sibRaw.accountEmail?.lowercased() == em {
-                snapshots[sibling] = applySavedPlanMultiplier(to: sibRaw)
-                overlayManager.updateSnapshots(snapshots)
-            }
+        } else if let current = snapshots[agentID] {
+            // If raw snapshot hasn't been populated yet, strip any prior suffix before re-applying cleanly
+            let strippedTier = current.planTier.map { QuotaSnapshot.stripMultiplierSuffix(from: $0) }
+            let base = QuotaSnapshot(
+                agentID: current.agentID,
+                remainingPercent: current.remainingPercent,
+                creditsRemaining: current.creditsRemaining,
+                creditsTotal: current.creditsTotal,
+                balanceDisplay: current.balanceDisplay,
+                dockBalanceShort: current.dockBalanceShort,
+                accountEmail: current.accountEmail,
+                planTier: strippedTier,
+                primaryLabel: current.primaryLabel,
+                resetsAt: current.resetsAt,
+                resetText: current.resetText,
+                windows: current.windows,
+                subtitle: current.subtitle,
+                isWorking: current.isWorking,
+                sourceDescription: current.sourceDescription,
+                updatedAt: current.updatedAt,
+                requiresWebLogin: current.requiresWebLogin,
+                errorMessage: current.errorMessage
+            )
+            rawSnapshots[agentID] = base
+            snapshots[agentID] = applySavedPlanMultiplier(to: base)
+            overlayManager.updateSnapshots(snapshots)
         }
     }
 
@@ -148,9 +154,34 @@ public final class AgentGaugeStore: ObservableObject {
         UserDefaults.standard.set(dict, forKey: "AgentGauge.planMultipliersByAccount")
     }
 
-    private func applySavedPlanMultiplier(to snap: QuotaSnapshot) -> QuotaSnapshot {
+    func applySavedPlanMultiplier(to snap: QuotaSnapshot) -> QuotaSnapshot {
         let choice = planMultiplier(for: snap.agentID, email: snap.accountEmail)
         return snap.applyingPlanMultiplier(choice)
+    }
+
+    /// Pure state transition helper: preserves previous quota on transient errors ONLY when
+    /// account identity AND active pool have not changed (never stamps Account A's quota onto Account B or Pool A onto Pool B!).
+    public static func shouldPreservePreviousQuota(previous: QuotaSnapshot, fresh: QuotaSnapshot) -> Bool {
+        guard previous.remainingPercent != nil,
+              fresh.remainingPercent == nil,
+              !fresh.requiresWebLogin else {
+            return false
+        }
+
+        let prevEmail = previous.accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        let freshEmail = fresh.accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        if prevEmail != freshEmail {
+            return false
+        }
+
+        if let prevPool = previous.primaryLabel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+           let freshPool = fresh.primaryLabel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+           fresh.agentID == .antigravity,
+           prevPool != freshPool {
+            return false
+        }
+
+        return true
     }
 
     public func antigravityUltraMultiplier(forEmail email: String?) -> PlanMultiplierChoice {
@@ -369,18 +400,27 @@ public final class AgentGaugeStore: ObservableObject {
         var loadedMultipliers: [String: PlanMultiplierChoice] = [:]
         if let rawUnified = defaults.dictionary(forKey: "AgentGauge.planMultipliersByAccount") as? [String: String] {
             for (k, v) in rawUnified {
-                if let m = PlanMultiplierChoice(rawValue: v), m != .auto {
-                    loadedMultipliers[k.lowercased()] = m
+                let normKey = k.lowercased()
+                // Only load strictly account-scoped `agent|email` keys (drop any legacy email-less product-global keys)
+                if normKey.contains("|"), let m = PlanMultiplierChoice(rawValue: v), m != .auto {
+                    loadedMultipliers[normKey] = m
                 }
             }
         }
+        // One-time migration from legacy `AgentGauge.antigravityUltraMultipliersByEmail` into single unified store
         if let rawAgyMap = defaults.dictionary(forKey: "AgentGauge.antigravityUltraMultipliersByEmail") as? [String: String] {
             for (em, v) in rawAgyMap {
-                let key = "antigravity|\(em.lowercased())"
+                let cleanEm = em.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleanEm.isEmpty else { continue }
+                let key = "antigravity|\(cleanEm)"
                 if loadedMultipliers[key] == nil, let m = PlanMultiplierChoice(rawValue: v), m != .auto {
                     loadedMultipliers[key] = m
                 }
             }
+            var migratedDict: [String: String] = [:]
+            for (k, v) in loadedMultipliers { migratedDict[k] = v.rawValue }
+            defaults.set(migratedDict, forKey: "AgentGauge.planMultipliersByAccount")
+            defaults.removeObject(forKey: "AgentGauge.antigravityUltraMultipliersByEmail")
         }
         self.planMultipliersByAccount = loadedMultipliers
 
@@ -601,14 +641,12 @@ public final class AgentGaugeStore: ObservableObject {
     }
 
     public func openWebLogin(for agentID: AgentID) {
-        guard let url = agentID.webLoginURL else { return }
+        guard agentID.usesWebKitSessionForQuota, let url = agentID.webLoginURL else { return }
         WebUsageFetcher.shared.openLoginWindow(for: agentID, url: url) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                if agentID == .workbuddy {
-                    WorkBuddyProvider.invalidateCache()
-                }
-                self.webAuthVerified.insert(agentID)
+                ProviderRegistry.invalidateCaches(for: agentID)
+                // Do NOT pre-mark `webAuthVerified`; `refreshProvider` marks it ONLY once a live quota succeeds!
                 await self.refresh(agentID: agentID, forceWebProbe: true)
             }
         }
@@ -716,13 +754,16 @@ public final class AgentGaugeStore: ObservableObject {
             }
         }
 
+        let nextGen = (refreshGeneration[id] ?? 0) &+ 1
+        refreshGeneration[id] = nextGen
+
         // Run provider fetch strictly off @MainActor so SQLite / File I/O / JSON parsing never blocks UI clicks!
         let freshRaw = await Task.detached(priority: .utility) {
             await provider.fetchSnapshot()
         }.value
-        guard !promoFrozen else { return }
+        guard !promoFrozen, refreshGeneration[id] == nextGen else { return }
 
-        rawSnapshots[id] = freshRaw
+        let previous = snapshots[id]
         let fresh = applySavedPlanMultiplier(to: freshRaw)
 
         if fresh.requiresWebLogin && !Self.nativeLocalAgents.contains(id) {
@@ -731,16 +772,15 @@ public final class AgentGaugeStore: ObservableObject {
             webAuthVerified.insert(id)
         }
 
-        let previous = snapshots[id]
-
         if fresh.remainingPercent != nil {
+            rawSnapshots[id] = freshRaw
             snapshots[id] = fresh
             if fresh.hasMeaningfulChange(from: previous) {
                 let valDesc = fresh.formattedTooltipValue(showPercentageSign: showPercentageSign)
                 let tierTag = fresh.compactPlanBadge.map { " [\($0)]" } ?? ""
                 AppLogger.shared.log(id.displayName, "\(valDesc)\(tierTag) · 重置: \(fresh.formattedCountdown()) · 来源: \(fresh.sourceDescription)")
             }
-        } else if let prev = previous, prev.remainingPercent != nil, !fresh.requiresWebLogin {
+        } else if let prev = previous, Self.shouldPreservePreviousQuota(previous: prev, fresh: fresh) {
             let preserved = QuotaSnapshot(
                 agentID: id,
                 remainingPercent: prev.remainingPercent,
@@ -748,7 +788,7 @@ public final class AgentGaugeStore: ObservableObject {
                 creditsTotal: prev.creditsTotal,
                 balanceDisplay: prev.balanceDisplay,
                 dockBalanceShort: prev.dockBalanceShort,
-                accountEmail: fresh.accountEmail ?? prev.accountEmail,
+                accountEmail: prev.accountEmail,
                 planTier: fresh.planTier ?? prev.planTier,
                 primaryLabel: prev.primaryLabel,
                 resetsAt: prev.resetsAt,
@@ -766,6 +806,7 @@ public final class AgentGaugeStore: ObservableObject {
                 AppLogger.shared.log(id.displayName, err)
             }
         } else {
+            rawSnapshots[id] = freshRaw
             snapshots[id] = fresh
             if let err = fresh.errorMessage, fresh.hasMeaningfulChange(from: previous) {
                 AppLogger.shared.log(id.displayName, err)
